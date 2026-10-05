@@ -364,7 +364,7 @@ body.sheet-open{overflow:hidden}
 const H={n:"Ambassador Zlatá Husa",la:50.0813,ln:14.4258};
 
 const D=[
-{l:"יום 11",d:"שישי 23/10",t:"הגעה + עיר עתיקה",b:"1,950",a:[
+{l:"יום 1",d:"שישי 23/10",t:"הגעה + עיר עתיקה",b:"1,950",a:[
 {id:"1a",s:"09:30",e:"10:00",ic:"✈️",n:"נחיתה + מזוודות",ds:"שדה התעופה פראג",la:50.1008,ln:14.2600,c:"—",cv:0},
 {id:"1b",s:"10:00",e:"10:40",ic:"🚕",n:"Bolt למלון",ds:"35–40 דק' נסיעה",la:50.0813,ln:14.4258,c:"~450 CZK",cv:450,tr:"taxi"},
 {id:"1c",s:"10:40",e:"11:00",ic:"🏨",n:"השארת מזוודות במלון",ds:"צ'ק-אין מ-14:00",la:50.0813,ln:14.4258,c:"—",cv:0},
@@ -2044,6 +2044,7 @@ function closeSheet(fromPop){
   if(dayMapInst){try{dayMapInst.remove()}catch(e){}dayMapInst=null}
   dayMapPopup=null;
   try{if(fromPop!==true&&history.state&&history.state.sheet)history.back()}catch(e){}
+  if(pendingUpdate)setTimeout(doReload,300);
 }
 window.addEventListener('popstate',()=>{if($('mo').classList.contains('on'))closeSheet(true)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
@@ -2105,26 +2106,35 @@ function showDetail(di,ai){
   showAuthorLine(a.id);
 }
 
-/* ══════════ Update check (בודק מול השרת שלכם בלבד — לא שירות חיצוני) ══════════ */
-const APP_VERSION='1'; // כל פעם שמעלים גרסה חדשה לשרת — שנו מספר/תאריך כאן
+/* ══════════ Update check — אוטומטי לגמרי, בלי APP_VERSION ידני ══════════ */
+/* משווה hash של תוכן ה-HTML שהשרת מחזיר לזה שנטען בפעם האחרונה. */
+/* אם שונה ואין חלון עריכה פתוח — מרענן לבד. אם יש עריכה פתוחה — מחכה שתיסגר כדי לא לאבד הקלדה. */
+let lastHtmlHash=null,pendingUpdate=false;
+function simpleHash(str){let h=0;for(let i=0;i<str.length;i++){h=(h*31+str.charCodeAt(i))|0}return h}
 async function checkForUpdate(){
   try{
     const r=await fetch(location.pathname+'?_v='+Date.now(),{cache:'no-store'});
     const html=await r.text();
-    const m=html.match(/APP_VERSION=['"]([^'"]+)['"]/);
-    if(m&&m[1]&&m[1]!==APP_VERSION)showUpdateBanner();
+    const h=simpleHash(html);
+    if(lastHtmlHash===null){lastHtmlHash=h;return}
+    if(h!==lastHtmlHash){
+      pendingUpdate=true;
+      if($('mo').classList.contains('on'))showUpdateBanner();
+      else doReload();
+    }
   }catch(e){console.log('update-check-err',e)}
 }
+function doReload(){location.href=location.pathname+'?_v='+Date.now()}
 function showUpdateBanner(){
   if($('updateBanner'))return;
   const d=document.createElement('div');
   d.id='updateBanner';
-  d.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:999;background:#caa45a;color:#111;padding:12px 16px;text-align:center;font-weight:700;cursor:pointer;font-size:14px';
-  d.textContent='🔄 יש גרסה חדשה של האפליקציה — הקישו כאן לרענון';
-  d.onclick=()=>{location.href=location.pathname+'?_v='+Date.now()};
+  d.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:999;background:#caa45a;color:#111;padding:12px 16px;text-align:center;font-weight:700;font-size:14px';
+  d.textContent='🔄 יש גרסה חדשה — תיטען אוטומטית ברגע שתסגרו את החלון';
   document.body.appendChild(d);
 }
 setTimeout(checkForUpdate,2000);
+setInterval(checkForUpdate,5*60*1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkForUpdate()});
 
 /* ══════════ Init ══════════ */

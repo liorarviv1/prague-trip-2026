@@ -1957,14 +1957,14 @@ function acts(di){
       s:o.time_start||a.s,e:o.time_end||a.e,ic:o.icon||a.ic,n:o.title||a.n,
       ds:(o.desc!=null?o.desc:a.ds),c:o.cost_text||a.c,cv:(o.cost_val!=null?o.cost_val:a.cv),
       addr:o.addr||a.addr,
-      la:(isFinite(o.lat)?o.lat:a.la),ln:(isFinite(o.lng)?o.lng:a.ln),
+      la:(o.lat!=null&&isFinite(o.lat)?o.lat:a.la),ln:(o.lng!=null&&isFinite(o.lng)?o.lng:a.ln),
       created_by:o.created_by,created_dev:o.created_dev,updated_by:o.updated_by,updated_dev:o.updated_dev,
       _edited:true
     });
   }).filter(Boolean);
   added.forEach(function(r){
     list.push({id:r.id,s:r.time_start||'',e:r.time_end||'',ic:r.icon||'📍',n:r.title,ds:r.desc||'',
-      c:r.cost_text||'—',cv:r.cost_val||0,la:(isFinite(r.lat)?r.lat:NaN),ln:(isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
+      c:r.cost_text||'—',cv:r.cost_val||0,la:(r.lat!=null&&isFinite(r.lat)?r.lat:NaN),ln:(r.lng!=null&&isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
       created_by:r.created_by,created_dev:r.created_dev,updated_by:r.updated_by,updated_dev:r.updated_dev});
   });
   const ord=planOrder['d'+di];

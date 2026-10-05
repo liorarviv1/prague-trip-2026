@@ -2,6 +2,9 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0b0d17">
@@ -713,6 +716,7 @@ function planHTML(){
       ${a.ds?`<div class="desc">${a.ds}</div>`:''}
       ${a.al?`<div class="alert">⚠️ ${a.al}</div>`:''}
       <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}</div>
+      ${(a.custom||a._edited)&&traceLbl(a)?`<div class="es">${traceLbl(a)}</div>`:''}
     </div>`;
   });
   h+='</div>';
@@ -1253,8 +1257,11 @@ async function savePlanItem(){
   if(!sb){toast('אין חיבור לשרת');return}
   const s=$('pa-s').value.trim(),e=$('pa-e').value.trim(),ic=$('pa-ic').value.trim()||'📍',ds=$('pa-ds').value.trim(),c=$('pa-c').value.trim();
   const id=planEditId||('pa'+Date.now());
-  const row=Object.assign({id:id,day_idx:planEditDay,time_start:s||null,time_end:e||null,icon:ic,title:n,desc:ds||null,cost_text:c||null,addr:addr||null,deleted:false},stampNew());
+  const existing=planEditId?planCustom.find(function(x){return x.id===planEditId}):null;
   const btn=$('pa-save');btn.disabled=true;btn.textContent='שומר...';
+  const row=planEditId
+    ? Object.assign({id:id,day_idx:planEditDay,time_start:s||null,time_end:e||null,icon:ic,title:n,desc:ds||null,cost_text:c||null,addr:addr||null,deleted:false,created_by:existing?existing.created_by:null,created_dev:existing?existing.created_dev:null},stamp())
+    : Object.assign({id:id,day_idx:planEditDay,time_start:s||null,time_end:e||null,icon:ic,title:n,desc:ds||null,cost_text:c||null,addr:addr||null,deleted:false},stampNew());
   const before=planCustom.slice();
   planPend[id]=row;
   planCustom=planCustom.some(x=>x.id===id)?planCustom.map(x=>x.id===id?row:x):planCustom.concat([row]);
@@ -1949,12 +1956,16 @@ function acts(di){
     return Object.assign({},a,{
       s:o.time_start||a.s,e:o.time_end||a.e,ic:o.icon||a.ic,n:o.title||a.n,
       ds:(o.desc!=null?o.desc:a.ds),c:o.cost_text||a.c,cv:(o.cost_val!=null?o.cost_val:a.cv),
-      addr:o.addr||a.addr,_edited:true
+      addr:o.addr||a.addr,
+      la:(isFinite(o.lat)?o.lat:a.la),ln:(isFinite(o.lng)?o.lng:a.ln),
+      created_by:o.created_by,created_dev:o.created_dev,updated_by:o.updated_by,updated_dev:o.updated_dev,
+      _edited:true
     });
   }).filter(Boolean);
   added.forEach(function(r){
     list.push({id:r.id,s:r.time_start||'',e:r.time_end||'',ic:r.icon||'📍',n:r.title,ds:r.desc||'',
-      c:r.cost_text||'—',cv:r.cost_val||0,la:NaN,ln:NaN,addr:r.addr||'',custom:true});
+      c:r.cost_text||'—',cv:r.cost_val||0,la:(isFinite(r.lat)?r.lat:NaN),ln:(isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
+      created_by:r.created_by,created_dev:r.created_dev,updated_by:r.updated_by,updated_dev:r.updated_dev});
   });
   const ord=planOrder['d'+di];
   if(ord&&ord.length){
@@ -2076,6 +2087,7 @@ function showDetail(di,ai){
   const has=notes[a.id]&&notes[a.id].text;
   mo.innerHTML=`<div class="modal"><div class="handle"></div>
     <h2>${a.ic} ${a.n}</h2><div class="sub">${a.s}–${a.e} · ${d.l}</div>
+    ${(a.custom||a._edited)&&traceLbl(a)?`<div class="es">${traceLbl(a)}</div>`:''}
     ${a.ds?`<div class="row"><span class="ic">📝</span><span>${a.ds}</span></div>`:''}
     <div class="row"><span class="ic">💰</span><span class="lb">עלות</span><span>${a.c}</span></div>
     ${a.al?`<div class="row"><span class="ic">⚠️</span><span style="color:var(--orange);font-weight:600">${a.al}</span></div>`:''}
@@ -2092,6 +2104,28 @@ function showDetail(di,ai){
   mo.onclick=e=>{if(e.target===mo)closeSheet()};
   showAuthorLine(a.id);
 }
+
+/* ══════════ Update check (בודק מול השרת שלכם בלבד — לא שירות חיצוני) ══════════ */
+const APP_VERSION='2025-10-05-1'; // כל פעם שמעלים גרסה חדשה לשרת — שנו מספר/תאריך כאן
+async function checkForUpdate(){
+  try{
+    const r=await fetch(location.pathname+'?_v='+Date.now(),{cache:'no-store'});
+    const html=await r.text();
+    const m=html.match(/APP_VERSION=['"]([^'"]+)['"]/);
+    if(m&&m[1]&&m[1]!==APP_VERSION)showUpdateBanner();
+  }catch(e){console.log('update-check-err',e)}
+}
+function showUpdateBanner(){
+  if($('updateBanner'))return;
+  const d=document.createElement('div');
+  d.id='updateBanner';
+  d.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:999;background:#caa45a;color:#111;padding:12px 16px;text-align:center;font-weight:700;cursor:pointer;font-size:14px';
+  d.textContent='🔄 יש גרסה חדשה של האפליקציה — הקישו כאן לרענון';
+  d.onclick=()=>{location.href=location.pathname+'?_v='+Date.now()};
+  document.body.appendChild(d);
+}
+setTimeout(checkForUpdate,2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkForUpdate()});
 
 /* ══════════ Init ══════════ */
 renderDays();

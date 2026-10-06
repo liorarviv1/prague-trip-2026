@@ -342,6 +342,7 @@ body.sheet-open{overflow:hidden}
       <button class="hbtn sos" data-open="sos" aria-label="מידע חיוני" data-ic="buoy"></button>
       <a class="hbtn" href="https://translate.google.com/?hl=iw&sl=iw&tl=cs&op=translate" target="_blank" rel="noopener" aria-label="גוגל תרגום" data-ic="translate"></a>
       <button class="hbtn" onclick="openNearby()" aria-label="מסעדות בקרבת מקום" data-ic="fork"></button>
+      <button class="hbtn" onclick="addAllToCalendar()" aria-label="הוסף את כל הלו&quot;ז ליומן" data-ic="cal"></button>
     </div>
     <div class="sync" id="sync"><span class="dot"></span><span id="syncTxt">מתחבר</span></div>
   </div>
@@ -2185,15 +2186,20 @@ function activityDates(di,a){
 }
 function icsDt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
 function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
-function buildIcsText(a,start,end,loc){
-  const uid='prg-'+a.id+'-'+Date.now()+'@trip';
-  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
-    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(start),'DTEND:'+icsDt(end),
+/* UID קבוע (לא תלוי בזמן הלחיצה) — כדי שאם לוחצים "הוסף ליומן" שוב על אותה פעילות,
+   אפליקציית היומן תזהה שזה אותו אירוע ותעדכן אותו במקום ליצור כפול. */
+function icsUidFor(di,a){return'prg-d'+di+'-'+a.id+'@pragatrip'}
+function buildIcsEvent(a,start,end,loc,uid){
+  return['BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(start),'DTEND:'+icsDt(end),
     'SUMMARY:'+icsEsc(a.ic+' '+a.n),
     a.ds?('DESCRIPTION:'+icsEsc(a.ds)):'',
     loc?('LOCATION:'+icsEsc(loc)):'',
     'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:תזכורת','END:VALARM',
-    'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
+    'END:VEVENT'].filter(Boolean).join('\r\n');
+}
+function buildIcsText(a,start,end,loc,uid){
+  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    buildIcsEvent(a,start,end,loc,uid),'END:VCALENDAR'].join('\r\n');
 }
 function gcalUrlFor(a,start,end,loc){
   function fmt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
@@ -2216,15 +2222,36 @@ function addToCalendar(di,actId){
       window.open(gcalUrlFor(a,dt.start,dt.end,loc),'_blank','noopener');
       return;
     }
-    const ics=buildIcsText(a,dt.start,dt.end,loc);
-    const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const link=document.createElement('a');
-    link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
-    document.body.appendChild(link);link.click();document.body.removeChild(link);
-    setTimeout(function(){URL.revokeObjectURL(url)},30000);
+    const ics=buildIcsText(a,dt.start,dt.end,loc,icsUidFor(di,a));
+    downloadBlob(ics,(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics');
     toast('📥 הקובץ ירד — פתחו אותו (מה-Files או מההתראה) כדי להוסיף ליומן');
   }catch(e){alert('שגיאה ב-addToCalendar: '+(e&&e.message?e.message:e));console.log('addToCalendar-err',e)}
+}
+function downloadBlob(text,filename){
+  const blob=new Blob([text],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.download=filename;
+  document.body.appendChild(link);link.click();document.body.removeChild(link);
+  setTimeout(function(){URL.revokeObjectURL(url)},30000);
+}
+function addAllToCalendar(){
+  try{
+    const events=[];
+    for(let di=0;di<D.length;di++){
+      acts(di).forEach(function(a){
+        const dt=activityDates(di,a);
+        if(!dt)return;
+        const loc=a.addr||ADDR[a.id]||a.n||'';
+        events.push(buildIcsEvent(a,dt.start,dt.end,loc,icsUidFor(di,a)));
+      });
+    }
+    if(!events.length){alert('לא נמצאו פעילויות עם שעה תקינה להוספה');return}
+    const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH']
+      .concat(events).concat(['END:VCALENDAR']).join('\r\n');
+    downloadBlob(ics,'prague_trip.ics');
+    toast('📥 כל הלו"ז ירד כקובץ אחד — פתחו אותו ולחצו "הוסף הכל"');
+  }catch(e){alert('שגיאה בהוספת כל הלו"ז: '+(e&&e.message?e.message:e));console.log('addAll-err',e)}
 }
 
 /* ══════════ Init ══════════ */

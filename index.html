@@ -2178,52 +2178,23 @@ function activityDates(di,a){
 }
 function icsDt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
 function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
-function buildIcsText(a,start,end,loc){
-  const uid='prg-'+a.id+'-'+Date.now()+'@trip';
-  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
-    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(start),'DTEND:'+icsDt(end),
+function addToCalendar(di,actId){
+  const list=acts(di),a=list.find(function(x){return x.id===actId});
+  if(!a){toast('לא נמצאה פעילות');return}
+  const dt=activityDates(di,a);
+  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן')  ;return}
+  const loc=a.addr||ADDR[a.id]||a.n||'';
+  const uid='prg-'+di+'-'+a.id+'@trip';
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(dt.start),'DTEND:'+icsDt(dt.end),
     'SUMMARY:'+icsEsc(a.ic+' '+a.n),
     a.ds?('DESCRIPTION:'+icsEsc(a.ds)):'',
     loc?('LOCATION:'+icsEsc(loc)):'',
     'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:תזכורת','END:VALARM',
     'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
-}
-function gcalUrlFor(a,start,end,loc){
-  function fmt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
-  const p=new URLSearchParams({action:'TEMPLATE',text:a.ic+' '+a.n,dates:fmt(start)+'/'+fmt(end),details:a.ds||'',location:loc||'',ctz:'Europe/Prague'});
-  return'https://calendar.google.com/calendar/render?'+p.toString();
-}
-/* data-URI ל-"add to calendar" עובד ישר רק ב-Safari/iOS. בדפדפנים אחרים (כרום/אנדרואיד)
-   הניווט הזה חסום ולא קורה כלום — אז מזהים את המכשיר ובוחרים לבד את השיטה שעובדת בו,
-   כדי שזה יישאר לחיצה אחת ישירה לכולם, כל אחד לפי הטלפון שלו. */
-function isIOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream}
-function addToCalendar(di,actId){
-  const list=acts(di),a=list.find(function(x){return x.id===actId});
-  if(!a){toast('לא נמצאה פעילות');return}
-  const dt=activityDates(di,a);
-  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן');return}
-  const loc=a.addr||ADDR[a.id]||a.n||'';
-  if(isIOS()){
-    const ics=buildIcsText(a,dt.start,dt.end,loc);
-    window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
-  }else{
-    window.open(gcalUrlFor(a,dt.start,dt.end,loc),'_blank','noopener');
-  }
-}
-function downloadIcs(di,actId){
-  const list=acts(di),a=list.find(function(x){return x.id===actId});
-  if(!a)return;
-  const dt=activityDates(di,a);
-  if(!dt)return;
-  const loc=a.addr||ADDR[a.id]||a.n||'';
-  const ics=buildIcsText(a,dt.start,dt.end,loc);
-  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const link=document.createElement('a');
-  link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
-  document.body.appendChild(link);link.click();document.body.removeChild(link);
-  setTimeout(function(){URL.revokeObjectURL(url)},30000);
-  toast('📥 הקובץ ירד — פתחו אותו כדי להוסיף ליומן');
+  // ניווט ישיר ל-data URI (לא טאב חדש/Blob) — זה מה שגורם ל-iOS לזהות שזה אירוע יומן
+  // ולפתוח את מסך "הוספה ליומן" במקום לנסות להציג דף ריק.
+  window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
 }
 
 /* ══════════ Init ══════════ */

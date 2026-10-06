@@ -717,7 +717,7 @@ function planHTML(){
       <div class="title">${a.ic} ${a.n}</div>
       ${a.ds?`<div class="desc">${a.ds}</div>`:''}
       ${a.al?`<div class="alert">⚠️ ${a.al}</div>`:''}
-      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}<button class="cal-tag" onclick="event.stopPropagation();addToCalendar(${curDay},'${a.id}')">📅 הוסף ליומן</button></div>
+      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}<button class="cal-tag" onclick="event.stopPropagation();showCalendarChoice(${curDay},'${a.id}')">📅 הוסף ליומן</button></div>
       ${(a.custom||a._edited)&&traceLbl(a)?`<div class="es">${traceLbl(a)}</div>`:''}
     </div>`;
   });
@@ -2096,7 +2096,7 @@ function showDetail(di,ai){
     ${a.al?`<div class="row"><span class="ic">⚠️</span><span style="color:var(--orange);font-weight:600">${a.al}</span></div>`:''}
     ${a.bk?`<div class="row"><span class="ic">📋</span><span style="color:var(--red);font-weight:600">דרוש הזמנה מראש</span></div>`:''}
     <a class="btn ghost block" href="${gmapsSearchFor(a)}" target="_blank" rel="noopener">📍 הצג במפה</a>
-    <button class="btn ghost block" onclick="addToCalendar(${di},'${a.id}')">📅 הוסף ליומן</button>
+    <button class="btn ghost block" onclick="showCalendarChoice(${di},'${a.id}')">📅 הוסף ליומן</button>
     <div class="bk-actions" style="margin-top:8px"><button class="btn ghost" onclick="showPlanEdit(${di},'${a.id}')">✏️ ערוך</button><button class="btn danger" onclick="delPlanItem(${di},'${a.id}')">🗑️ מחק</button></div>
     ${nextHtml}
     <span class="note-label">💬 הערות (משותף לכולם)</span>
@@ -2178,23 +2178,50 @@ function activityDates(di,a){
 }
 function icsDt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
 function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
-function addToCalendar(di,actId){
-  const list=acts(di),a=list.find(function(x){return x.id===actId});
-  if(!a){toast('לא נמצאה פעילות');return}
-  const dt=activityDates(di,a);
-  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן')  ;return}
-  const loc=a.addr||ADDR[a.id]||a.n||'';
-  const uid='prg-'+di+'-'+a.id+'@trip';
-  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
-    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(dt.start),'DTEND:'+icsDt(dt.end),
+function buildIcsText(a,start,end,loc){
+  const uid='prg-'+a.id+'-'+Date.now()+'@trip';
+  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(start),'DTEND:'+icsDt(end),
     'SUMMARY:'+icsEsc(a.ic+' '+a.n),
     a.ds?('DESCRIPTION:'+icsEsc(a.ds)):'',
     loc?('LOCATION:'+icsEsc(loc)):'',
     'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:תזכורת','END:VALARM',
     'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
-  // ניווט ישיר ל-data URI (לא טאב חדש/Blob) — זה מה שגורם ל-iOS לזהות שזה אירוע יומן
-  // ולפתוח את מסך "הוספה ליומן" במקום לנסות להציג דף ריק.
-  window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
+}
+function gcalUrlFor(a,start,end,loc){
+  function fmt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
+  const p=new URLSearchParams({action:'TEMPLATE',text:a.ic+' '+a.n,dates:fmt(start)+'/'+fmt(end),details:a.ds||'',location:loc||'',ctz:'Europe/Prague'});
+  return'https://calendar.google.com/calendar/render?'+p.toString();
+}
+/* שני דפדפנים מתנהגים אחרת: data-URI ל-"add to calendar" עובד רק ב-Safari.
+   אז במקום טריק שמשתמש בדפדפן אחר לא יראה שום דבר, נותנים שתי אפשרויות אמינות: */
+function showCalendarChoice(di,actId){
+  const list=acts(di),a=list.find(function(x){return x.id===actId});
+  if(!a){toast('לא נמצאה פעילות');return}
+  const dt=activityDates(di,a);
+  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן');return}
+  const loc=a.addr||ADDR[a.id]||a.n||'';
+  const gurl=gcalUrlFor(a,dt.start,dt.end,loc);
+  openSheet(`<div class="modal"><div class="handle"></div><h2>📅 הוסף ליומן</h2>
+    <div class="sub">${esc(a.ic+' '+a.n)} · ${esc(a.s)}–${esc(a.e)}</div>
+    <a class="btn gold block" href="${gurl}" target="_blank" rel="noopener">הוסף ל-Google Calendar</a>
+    <button class="btn ghost block" onclick="downloadIcs(${di},'${actId}')">📥 הורד קובץ ליומן (Apple / Outlook)</button>
+  </div>`);
+}
+function downloadIcs(di,actId){
+  const list=acts(di),a=list.find(function(x){return x.id===actId});
+  if(!a)return;
+  const dt=activityDates(di,a);
+  if(!dt)return;
+  const loc=a.addr||ADDR[a.id]||a.n||'';
+  const ics=buildIcsText(a,dt.start,dt.end,loc);
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
+  document.body.appendChild(link);link.click();document.body.removeChild(link);
+  setTimeout(function(){URL.revokeObjectURL(url)},30000);
+  toast('📥 הקובץ ירד — פתחו אותו כדי להוסיף ליומן');
 }
 
 /* ══════════ Init ══════════ */

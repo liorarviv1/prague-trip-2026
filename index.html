@@ -2199,32 +2199,36 @@ function gcalUrlFor(a,start,end,loc){
    כדי שזה יישאר לחיצה אחת ישירה לכולם, כל אחד לפי הטלפון שלו. */
 function isIOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream}
 function addToCalendar(di,actId){
-  const list=acts(di),a=list.find(function(x){return x.id===actId});
-  if(!a){toast('לא נמצאה פעילות');return}
-  const dt=activityDates(di,a);
-  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן');return}
-  const loc=a.addr||ADDR[a.id]||a.n||'';
-  if(isIOS()){
-    const ics=buildIcsText(a,dt.start,dt.end,loc);
-    window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
-  }else{
-    window.open(gcalUrlFor(a,dt.start,dt.end,loc),'_blank','noopener');
-  }
+  try{
+    const list=acts(di),a=list.find(function(x){return x.id===actId});
+    if(!a){alert('דיבאג: לא נמצאה פעילות (di='+di+' id='+actId+')');return}
+    const dt=activityDates(di,a);
+    if(!dt){alert('דיבאג: אין שעה תקינה לפעילות הזו — a.s='+a.s+' a.e='+a.e);return}
+    const loc=a.addr||ADDR[a.id]||a.n||'';
+    if(isIOS()){
+      const ics=buildIcsText(a,dt.start,dt.end,loc);
+      window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
+    }else{
+      window.open(gcalUrlFor(a,dt.start,dt.end,loc),'_blank','noopener');
+    }
+  }catch(e){alert('שגיאה ב-addToCalendar: '+(e&&e.message?e.message:e));console.log('addToCalendar-err',e)}
 }
 function downloadIcs(di,actId){
-  const list=acts(di),a=list.find(function(x){return x.id===actId});
-  if(!a)return;
-  const dt=activityDates(di,a);
-  if(!dt)return;
-  const loc=a.addr||ADDR[a.id]||a.n||'';
-  const ics=buildIcsText(a,dt.start,dt.end,loc);
-  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const link=document.createElement('a');
-  link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
-  document.body.appendChild(link);link.click();document.body.removeChild(link);
-  setTimeout(function(){URL.revokeObjectURL(url)},30000);
-  toast('📥 הקובץ ירד — פתחו אותו כדי להוסיף ליומן');
+  try{
+    const list=acts(di),a=list.find(function(x){return x.id===actId});
+    if(!a){alert('דיבאג: לא נמצאה פעילות (di='+di+' id='+actId+')');return}
+    const dt=activityDates(di,a);
+    if(!dt){alert('דיבאג: אין שעה תקינה לפעילות הזו — a.s='+a.s+' a.e='+a.e);return}
+    const loc=a.addr||ADDR[a.id]||a.n||'';
+    const ics=buildIcsText(a,dt.start,dt.end,loc);
+    const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+    setTimeout(function(){URL.revokeObjectURL(url)},30000);
+    alert('✅ ההורדה בוצעה — אם לא רואים אותה, בדקו את חץ ההורדות בספארי או את תיקיית הקבצים');
+  }catch(e){alert('שגיאה ב-downloadIcs: '+(e&&e.message?e.message:e));console.log('downloadIcs-err',e)}
 }
 
 /* ══════════ Init ══════════ */

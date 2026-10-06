@@ -1024,7 +1024,14 @@ async function loadAll(){
     if(ro.error)console.log('order-load-err',ro.error);else oo=applyOrder(ro.data);
     if(rx.error)console.log('expenses-load-err',rx.error);else xx=applyExpenses(rx.data);
     if(rpi.error)console.log('plan-items-load-err',rpi.error);else pii=applyPlanItems(rpi.data);
-    if((rc.error||rb.error||rp.error||ri.error||ro.error||rx.error||rpi.error)&&!firstLoadDone)toast('חסרה טבלה ב-Supabase — הריצו את ה-SQL');
+    if(!firstLoadDone){
+      const errs=[];
+      [['notes',rn],['checks',rc],['bookings',rb],['packing',rp],['info',ri],['plan_order',ro],['expenses',rx],['plan_items',rpi]].forEach(function(pair){
+        const name=pair[0],res=pair[1];
+        if(res&&res.error)errs.push(name+': '+(res.error.message||res.error.code||JSON.stringify(res.error)));
+      });
+      if(errs.length)alert('שגיאת טעינה מ-Supabase (העתיקו את זה):\n'+errs.join('\n'));
+    }
     const first=!firstLoadDone;
     firstLoadDone=true;synced=true;
     if(first||cc.length||nr.diff||br.diff||pr.diff||ir.diff||oo.diff||xx.diff||pii.diff||peopleDirty){peopleDirty=false;renderView({changed:first?[]:cc.concat(br.added),notes:first?[]:nr.changed})}
@@ -2097,7 +2104,6 @@ function showDetail(di,ai){
     ${a.bk?`<div class="row"><span class="ic">📋</span><span style="color:var(--red);font-weight:600">דרוש הזמנה מראש</span></div>`:''}
     <a class="btn ghost block" href="${gmapsSearchFor(a)}" target="_blank" rel="noopener">📍 הצג במפה</a>
     <button class="btn ghost block" onclick="addToCalendar(${di},'${a.id}')">📅 הוסף ליומן</button>
-    <button class="btn ghost block" style="opacity:.75" onclick="downloadIcs(${di},'${a.id}')">📥 לא נפתח? הורידו כקובץ במקום</button>
     <div class="bk-actions" style="margin-top:8px"><button class="btn ghost" onclick="showPlanEdit(${di},'${a.id}')">✏️ ערוך</button><button class="btn danger" onclick="delPlanItem(${di},'${a.id}')">🗑️ מחק</button></div>
     ${nextHtml}
     <span class="note-label">💬 הערות (משותף לכולם)</span>
@@ -2194,9 +2200,9 @@ function gcalUrlFor(a,start,end,loc){
   const p=new URLSearchParams({action:'TEMPLATE',text:a.ic+' '+a.n,dates:fmt(start)+'/'+fmt(end),details:a.ds||'',location:loc||'',ctz:'Europe/Prague'});
   return'https://calendar.google.com/calendar/render?'+p.toString();
 }
-/* data-URI ל-"add to calendar" עובד ישר רק ב-Safari/iOS. בדפדפנים אחרים (כרום/אנדרואיד)
-   הניווט הזה חסום ולא קורה כלום — אז מזהים את המכשיר ובוחרים לבד את השיטה שעובדת בו,
-   כדי שזה יישאר לחיצה אחת ישירה לכולם, כל אחד לפי הטלפון שלו. */
+/* ה-data-URI הישיר (ניווט ל-"data:text/calendar...") התברר לא אמין — עובד בחלק מהמכשירים
+   ולא בחלק אחר, בלי שום דרך לדעת מראש איפה. הורדת קובץ .ics ופתיחה ידנית כן עובדת בעקביות
+   בכל המכשירים שבדקנו, אז זו השיטה היחידה שנשארה — פחות "קסם" אבל אמינה. */
 function isIOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream}
 function addToCalendar(di,actId){
   try{
@@ -2205,21 +2211,11 @@ function addToCalendar(di,actId){
     const dt=activityDates(di,a);
     if(!dt){alert('דיבאג: אין שעה תקינה לפעילות הזו — a.s='+a.s+' a.e='+a.e);return}
     const loc=a.addr||ADDR[a.id]||a.n||'';
-    if(isIOS()){
-      const ics=buildIcsText(a,dt.start,dt.end,loc);
-      window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
-    }else{
+    if(!isIOS()){
+      // באנדרואיד/דסקטופ יש אפשרות נוחה יותר: קישור ישיר לגוגל קלנדר
       window.open(gcalUrlFor(a,dt.start,dt.end,loc),'_blank','noopener');
+      return;
     }
-  }catch(e){alert('שגיאה ב-addToCalendar: '+(e&&e.message?e.message:e));console.log('addToCalendar-err',e)}
-}
-function downloadIcs(di,actId){
-  try{
-    const list=acts(di),a=list.find(function(x){return x.id===actId});
-    if(!a){alert('דיבאג: לא נמצאה פעילות (di='+di+' id='+actId+')');return}
-    const dt=activityDates(di,a);
-    if(!dt){alert('דיבאג: אין שעה תקינה לפעילות הזו — a.s='+a.s+' a.e='+a.e);return}
-    const loc=a.addr||ADDR[a.id]||a.n||'';
     const ics=buildIcsText(a,dt.start,dt.end,loc);
     const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
     const url=URL.createObjectURL(blob);
@@ -2227,8 +2223,8 @@ function downloadIcs(di,actId){
     link.href=url;link.download=(a.n||'event').replace(/[^֐-׿a-zA-Z0-9]+/g,'_')+'.ics';
     document.body.appendChild(link);link.click();document.body.removeChild(link);
     setTimeout(function(){URL.revokeObjectURL(url)},30000);
-    alert('✅ ההורדה בוצעה — אם לא רואים אותה, בדקו את חץ ההורדות בספארי או את תיקיית הקבצים');
-  }catch(e){alert('שגיאה ב-downloadIcs: '+(e&&e.message?e.message:e));console.log('downloadIcs-err',e)}
+    toast('📥 הקובץ ירד — פתחו אותו (מה-Files או מההתראה) כדי להוסיף ליומן');
+  }catch(e){alert('שגיאה ב-addToCalendar: '+(e&&e.message?e.message:e));console.log('addToCalendar-err',e)}
 }
 
 /* ══════════ Init ══════════ */

@@ -125,7 +125,7 @@ body{
 
 .fld{margin-bottom:12px}
 .fld label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}
-.fld input{width:100%;padding:12px;border-radius:14px;border:1px solid var(--glass-b);background:var(--input);color:var(--text);font-family:inherit;font-size:16px}
+.fld input{width:100%;padding:12px;border-radius:14px;border:1px solid var(--glass-b);background:var(--input);color:var(--text);font-family:inherit;font-size:16px;color-scheme:light dark}
 .fld input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(107,149,255,.2)}
 .add-card{width:100%;min-height:64px;border-radius:22px;border:2px dashed var(--glass-b);background:transparent;color:var(--muted);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-bottom:10px}
 .add-card:active{transform:scale(.98);border-color:var(--gold);color:var(--gold)}
@@ -220,7 +220,7 @@ body{
 .day-map{width:100%;height:56vh;border-radius:16px;overflow:hidden;margin-top:6px;background:var(--input)}
 .map-legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:10px}
 .map-legend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-inline-end:6px;vertical-align:middle}
-.mk{width:28px;height:28px;border-radius:50%;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer}
+.mk{width:28px;height:28px;border-radius:50%;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .maplibregl-ctrl-attrib{font-size:10px}
 .maplibregl-popup-content{background:var(--glass-strong)!important;color:var(--text)!important;border-radius:12px!important;padding:8px 13px!important;font-family:inherit!important;font-size:12.5px!important;line-height:1.5!important;box-shadow:0 6px 20px rgba(0,0,0,.35)!important;direction:rtl!important}
 .maplibregl-popup-tip{display:none!important}
@@ -489,7 +489,7 @@ function dayMapPoints(){return acts(curDay).filter(function(a){return a.la>49.5&
 function openDayRoute(){
   const list=dayMapPoints();
   if(list.length<2){toast('אין מספיק נקודות ליום הזה למסלול');return}
-  openSheet(`<div class="modal"><div class="handle"></div><h2>🗺️ מסלול היום</h2><div class="sub">${esc(D[curDay].l)} · ${esc(D[curDay].d)} · לחצו על נקודה למעבר אליה</div>
+  openSheet(`<div class="modal"><div class="handle"></div><h2>🗺️ מסלול היום</h2><div class="sub">${esc(D[curDay].l)} · ${esc(D[curDay].d)} · המספרים הם סדר הביקור · הקישו לשם המקום, הקישו שוב מהר למעבר ללו"ז</div>
     <div id="dayMap" class="day-map"></div>
     <div class="map-legend"><span><i style="background:#3ddc97"></i>הליכה</span><span><i style="background:#ffb04a"></i>מונית</span><span><i style="background:#6b95ff"></i>תח"צ</span></div>
     <button class="btn gold block" onclick="openDayRouteExternal()">🧭 נווט במסלול המלא ב-Google Maps</button></div>`);
@@ -556,13 +556,14 @@ function initDayMap(){
       mk.addEventListener('mouseenter',function(){showMkPopup(a,pos)});
       mk.addEventListener('mouseleave',function(){if(dayMapPopup){dayMapPopup.remove();dayMapPopup=null}});
       let tapTimer=null;
-      mk.addEventListener('click',function(){
+      mk.addEventListener('click',function(ev){
+        ev.stopPropagation();
         if(tapTimer){ // second tap within the window -> navigate to it in the app
           clearTimeout(tapTimer);tapTimer=null;
           goToCard(a);
         }else{ // first tap -> just show what this place is
           showMkPopup(a,pos);
-          tapTimer=setTimeout(function(){tapTimer=null},320);
+          tapTimer=setTimeout(function(){tapTimer=null},450);
         }
       });
       new maplibregl.Marker({element:mk}).setLngLat([pos[1],pos[0]]).addTo(map);
@@ -715,7 +716,7 @@ function planHTML(){
       <div class="title">${a.ic} ${a.n}</div>
       ${a.ds?`<div class="desc">${a.ds}</div>`:''}
       ${a.al?`<div class="alert">⚠️ ${a.al}</div>`:''}
-      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}</div>
+      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}<button class="btn ghost sm" onclick="event.stopPropagation();addToCalendar(${curDay},'${a.id}')">📅 הוסף ליומן</button></div>
       ${(a.custom||a._edited)&&traceLbl(a)?`<div class="es">${traceLbl(a)}</div>`:''}
     </div>`;
   });
@@ -1239,7 +1240,7 @@ function showPlanEdit(di,actId){
   const isNew=!a;
   const curAddr=a?(a.addr||ADDR[a.id]||''):'';
   openSheet(`<div class="modal"><div class="handle"></div><h2>${a?'✏️ עריכת פעילות':'➕ פעילות חדשה'}</h2><div class="sub">${esc(D[di].l)} · יתעדכן אצל כולם</div>
-    <div class="fr"><div class="fld"><label>שעת התחלה</label><input id="pa-s" type="text" inputmode="text" value="${a?esc(a.s):''}" placeholder="14:00" autocomplete="off"></div><div class="fld"><label>שעת סיום</label><input id="pa-e" type="text" inputmode="text" value="${a?esc(a.e):''}" placeholder="15:30" autocomplete="off"></div></div>
+    <div class="fr"><div class="fld"><label>שעת התחלה</label><input id="pa-s" type="time" inputmode="numeric" value="${a?esc(a.s):''}" placeholder="14:00" autocomplete="off"></div><div class="fld"><label>שעת סיום</label><input id="pa-e" type="time" inputmode="numeric" value="${a?esc(a.e):''}" placeholder="15:30" autocomplete="off"></div></div>
     <div class="fld"><label>אייקון</label><input id="pa-ic" value="${a?esc(a.ic):'📍'}" style="width:70px;text-align:center" autocomplete="off"></div>
     <div class="fld"><label>שם הפעילות</label><input id="pa-n" value="${a?esc(a.n):''}" placeholder="למשל: ביקור במוזיאון" autocomplete="off"></div>
     <div class="fld"><label>תיאור (לא חובה)</label><input id="pa-ds" value="${a&&a.ds?esc(a.ds):''}" autocomplete="off"></div>
@@ -1957,14 +1958,14 @@ function acts(di){
       s:o.time_start||a.s,e:o.time_end||a.e,ic:o.icon||a.ic,n:o.title||a.n,
       ds:(o.desc!=null?o.desc:a.ds),c:o.cost_text||a.c,cv:(o.cost_val!=null?o.cost_val:a.cv),
       addr:o.addr||a.addr,
-      la:(o.lat!=null&&isFinite(o.lat)?o.lat:a.la),ln:(o.lng!=null&&isFinite(o.lng)?o.lng:a.ln),
+      la:(isFinite(o.lat)?o.lat:a.la),ln:(isFinite(o.lng)?o.lng:a.ln),
       created_by:o.created_by,created_dev:o.created_dev,updated_by:o.updated_by,updated_dev:o.updated_dev,
       _edited:true
     });
   }).filter(Boolean);
   added.forEach(function(r){
     list.push({id:r.id,s:r.time_start||'',e:r.time_end||'',ic:r.icon||'📍',n:r.title,ds:r.desc||'',
-      c:r.cost_text||'—',cv:r.cost_val||0,la:(r.lat!=null&&isFinite(r.lat)?r.lat:NaN),ln:(r.lng!=null&&isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
+      c:r.cost_text||'—',cv:r.cost_val||0,la:(isFinite(r.lat)?r.lat:NaN),ln:(isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
       created_by:r.created_by,created_dev:r.created_dev,updated_by:r.updated_by,updated_dev:r.updated_dev});
   });
   const ord=planOrder['d'+di];
@@ -2094,6 +2095,7 @@ function showDetail(di,ai){
     ${a.al?`<div class="row"><span class="ic">⚠️</span><span style="color:var(--orange);font-weight:600">${a.al}</span></div>`:''}
     ${a.bk?`<div class="row"><span class="ic">📋</span><span style="color:var(--red);font-weight:600">דרוש הזמנה מראש</span></div>`:''}
     <a class="btn ghost block" href="${gmapsSearchFor(a)}" target="_blank" rel="noopener">📍 הצג במפה</a>
+    <button class="btn ghost block" onclick="addToCalendar(${di},'${a.id}')">📅 הוסף ליומן</button>
     <div class="bk-actions" style="margin-top:8px"><button class="btn ghost" onclick="showPlanEdit(${di},'${a.id}')">✏️ ערוך</button><button class="btn danger" onclick="delPlanItem(${di},'${a.id}')">🗑️ מחק</button></div>
     ${nextHtml}
     <span class="note-label">💬 הערות (משותף לכולם)</span>
@@ -2143,6 +2145,59 @@ document.addEventListener('touchstart',()=>{
   const now=Date.now();
   if(now-lastTapCheck>60000){lastTapCheck=now;checkForUpdate()}
 },{capture:true,passive:true});
+
+/* ══════════ הוסף ליומן (ICS) — תזכורות דרך יומן הטלפון עצמו, לא תלוי שהאפליקציה פתוחה ══════════ */
+function toMin(t){
+  const m=String(t||'').match(/^(\d{1,2}):(\d{2})$/);
+  return m?(+m[1])*60+(+m[2]):null;
+}
+function parseDayDate(d){
+  const m=String(d||'').match(/(\d{1,2})\/(\d{1,2})/);
+  return m?{day:+m[1],month:+m[2]}:null;
+}
+function tripDateFor(dayStr){
+  const pd=parseDayDate(dayStr);
+  if(!pd)return null;
+  const year=new Date().getFullYear();
+  let d=new Date(year,pd.month-1,pd.day);
+  if(d.getTime()<Date.now()-60*24*3600*1000)d=new Date(year+1,pd.month-1,pd.day);
+  return d;
+}
+function activityDates(di,a){
+  const day=tripDateFor(D[di]?D[di].d:'');
+  if(!day)return null;
+  const sm=toMin(a.s);
+  if(sm==null)return null;
+  const start=new Date(day);start.setHours(Math.floor(sm/60),sm%60,0,0);
+  const em=toMin(a.e);
+  let end;
+  if(em!=null){end=new Date(day);end.setHours(Math.floor(em/60),em%60,0,0);if(end<=start)end=new Date(start.getTime()+3600000)}
+  else end=new Date(start.getTime()+3600000);
+  return{start:start,end:end};
+}
+function icsDt(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'}
+function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
+function addToCalendar(di,actId){
+  const list=acts(di),a=list.find(function(x){return x.id===actId});
+  if(!a){toast('לא נמצאה פעילות');return}
+  const dt=activityDates(di,a);
+  if(!dt){toast('אין שעה לפעילות הזו — אי אפשר להוסיף ליומן')  ;return}
+  const loc=a.addr||ADDR[a.id]||a.n||'';
+  const uid='prg-'+di+'-'+a.id+'@trip';
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    'BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+icsDt(new Date()),'DTSTART:'+icsDt(dt.start),'DTEND:'+icsDt(dt.end),
+    'SUMMARY:'+icsEsc(a.ic+' '+a.n),
+    a.ds?('DESCRIPTION:'+icsEsc(a.ds)):'',
+    loc?('LOCATION:'+icsEsc(loc)):'',
+    'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:תזכורת','END:VALARM',
+    'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.target='_blank';link.rel='noopener';
+  document.body.appendChild(link);link.click();document.body.removeChild(link);
+  setTimeout(function(){URL.revokeObjectURL(url)},30000);
+}
 
 /* ══════════ Init ══════════ */
 renderDays();

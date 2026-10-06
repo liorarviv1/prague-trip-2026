@@ -188,8 +188,9 @@ body{
 .btn .ic{width:16px;height:16px}
 .tab .ic{width:22px;height:22px;transition:transform .25s}
 .tab.on .ic{transform:translateY(-1px) scale(1.1)}
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
 .tags .book-tag{margin-top:0}
+.cal-tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;border:none;cursor:pointer;background:rgba(232,189,91,.16);color:var(--gold);font-family:inherit}
 .cat{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px}
 .cat-transport{color:var(--blue);background:rgba(107,149,255,.15)}
 .cat-food{color:var(--orange);background:rgba(255,176,74,.16)}
@@ -716,7 +717,7 @@ function planHTML(){
       <div class="title">${a.ic} ${a.n}</div>
       ${a.ds?`<div class="desc">${a.ds}</div>`:''}
       ${a.al?`<div class="alert">⚠️ ${a.al}</div>`:''}
-      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}<button class="btn ghost sm" onclick="event.stopPropagation();addToCalendar(${curDay},'${a.id}')">📅 הוסף ליומן</button></div>
+      <div class="tags">${cat?`<span class="cat cat-${cat.k}">${cat.l}</span>`:''}${a.bk?`<span class="book-tag">📋 דרוש הזמנה מראש</span>`:''}${has?`<span class="note-dot has" id="ndot-${a.id}">💬 הערה</span>`:''}<button class="cal-tag" onclick="event.stopPropagation();addToCalendar(${curDay},'${a.id}')">📅 הוסף ליומן</button></div>
       ${(a.custom||a._edited)&&traceLbl(a)?`<div class="es">${traceLbl(a)}</div>`:''}
     </div>`;
   });
@@ -2191,12 +2192,9 @@ function addToCalendar(di,actId){
     loc?('LOCATION:'+icsEsc(loc)):'',
     'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:תזכורת','END:VALARM',
     'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
-  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const link=document.createElement('a');
-  link.href=url;link.target='_blank';link.rel='noopener';
-  document.body.appendChild(link);link.click();document.body.removeChild(link);
-  setTimeout(function(){URL.revokeObjectURL(url)},30000);
+  // ניווט ישיר ל-data URI (לא טאב חדש/Blob) — זה מה שגורם ל-iOS לזהות שזה אירוע יומן
+  // ולפתוח את מסך "הוספה ליומן" במקום לנסות להציג דף ריק.
+  window.location.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
 }
 
 /* ══════════ Init ══════════ */

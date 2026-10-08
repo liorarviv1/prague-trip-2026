@@ -271,12 +271,6 @@ body.sheet-open{overflow:hidden}
 .exp-daychip b{color:var(--gold)}
 .exp-g{font-size:12.5px;font-weight:800;color:var(--muted);margin:16px 4px 8px;display:flex;justify-content:space-between}
 .exp-g span:last-child{color:var(--gold)}
-.budget-wrap{margin-top:12px;cursor:pointer;text-align:right}
-.budget-row{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800}
-.budget-row span:first-child{color:var(--text)}
-.budget-wrap .bar{margin-top:6px;height:7px}
-.budget-warn{font-size:11.5px;font-weight:700;margin-top:6px}
-.budget-set{display:block;width:100%;margin-top:12px;text-align:center}
 .exp-row{display:flex;align-items:center;gap:10px;border-radius:18px;padding:11px 14px;margin-bottom:8px}
 .exp-row .amt{font-size:16px;font-weight:800;color:var(--gold);min-width:78px}
 .exp-row .em{flex:1;min-width:0}
@@ -615,8 +609,6 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 let tab='plan', curDay=0;
 let done={}, notes={}, pending={}, custom=[], pendingAdd={}, pendingDel={}, packing=[], pkPend={}, packViewSel='personal', showOthers=true, seedTried=false, peopleDirty=false;
 let expenses=[], expPend={}, expEditId=null, expCatSel='', expPaySel='🤝 משותף', expDaySel='', expDayFilter='', expCurFilter='', expCurSel='CZK';
-let budgetLimit=null, budgetCur='CZK', budgetWarned=0, budgetCurSel='CZK';
-try{const bl=JSON.parse(localStorage.getItem('p_budget')||'null');if(bl&&bl.amount>0){budgetLimit=bl.amount;budgetCur=bl.currency||'CZK'}}catch(e){}
 let planCustom=[], planPend={}, planEditId=null, planEditDay=0;
 let sb=null, live=false, busy=0, synced=false, firstLoadDone=false, loading=false, again=false;
 let myName='';
@@ -1006,9 +998,9 @@ async function loadAll(){
   if(loading){again=true;return}
   loading=true;
   try{
-    const res=await tracked(Promise.all([sb.from('notes').select('*'),sb.from('checks').select('*'),sb.from('bookings').select('*'),sb.from('packing').select('*'),sb.from('info').select('*'),sb.from('plan_order').select('*'),sb.from('expenses').select('*'),sb.from('plan_items').select('*'),sb.from('settings').select('*')]));
-    const rn=res[0],rc=res[1],rb=res[2],rp=res[3],ri=res[4],ro=res[5],rx=res[6],rpi=res[7],rs=res[8];
-    let cc=[],nr={changed:[],diff:false},br={diff:false,added:[]},pr={diff:false,added:[]},ir={diff:false},oo={diff:false},xx={diff:false,added:[]},pii={diff:false},ss={diff:false};
+    const res=await tracked(Promise.all([sb.from('notes').select('*'),sb.from('checks').select('*'),sb.from('bookings').select('*'),sb.from('packing').select('*'),sb.from('info').select('*'),sb.from('plan_order').select('*'),sb.from('expenses').select('*'),sb.from('plan_items').select('*')]));
+    const rn=res[0],rc=res[1],rb=res[2],rp=res[3],ri=res[4],ro=res[5],rx=res[6],rpi=res[7];
+    let cc=[],nr={changed:[],diff:false},br={diff:false,added:[]},pr={diff:false,added:[]},ir={diff:false},oo={diff:false},xx={diff:false,added:[]},pii={diff:false};
     if(rn.error)console.log('notes-load-err',rn.error);else nr=applyNotes(rn.data);
     if(rc.error)console.log('checks-load-err',rc.error);else cc=applyChecks(rc.data);
     if(rb.error)console.log('bookings-load-err',rb.error);else br=applyBookings(rb.data);
@@ -1033,10 +1025,9 @@ async function loadAll(){
     if(ro.error)console.log('order-load-err',ro.error);else oo=applyOrder(ro.data);
     if(rx.error)console.log('expenses-load-err',rx.error);else xx=applyExpenses(rx.data);
     if(rpi.error)console.log('plan-items-load-err',rpi.error);else pii=applyPlanItems(rpi.data);
-    if(rs.error)console.log('settings-load-err',rs.error);else ss=applySettings(rs.data);
     if(!firstLoadDone){
       const errs=[];
-      [['notes',rn],['checks',rc],['bookings',rb],['packing',rp],['info',ri],['plan_order',ro],['expenses',rx],['plan_items',rpi],['settings',rs]].forEach(function(pair){
+      [['notes',rn],['checks',rc],['bookings',rb],['packing',rp],['info',ri],['plan_order',ro],['expenses',rx],['plan_items',rpi]].forEach(function(pair){
         const name=pair[0],res=pair[1];
         if(res&&res.error)errs.push(name+': '+(res.error.message||res.error.code||JSON.stringify(res.error)));
       });
@@ -1044,7 +1035,7 @@ async function loadAll(){
     }
     const first=!firstLoadDone;
     firstLoadDone=true;synced=true;
-    if(first||cc.length||nr.diff||br.diff||pr.diff||ir.diff||oo.diff||xx.diff||pii.diff||ss.diff||peopleDirty){peopleDirty=false;renderView({changed:first?[]:cc.concat(br.added),notes:first?[]:nr.changed})}
+    if(first||cc.length||nr.diff||br.diff||pr.diff||ir.diff||oo.diff||xx.diff||pii.diff||peopleDirty){peopleDirty=false;renderView({changed:first?[]:cc.concat(br.added),notes:first?[]:nr.changed})}
     if(ir.diff&&$('mo').classList.contains('on')&&$('sos-root'))showSOS();
     if(!first){
       if(cc.length)showLive(describeChange(cc));
@@ -1080,7 +1071,6 @@ function initShared(){
       .on('postgres_changes',{event:'*',schema:'public',table:'plan_order'},scheduleLoad)
       .on('postgres_changes',{event:'*',schema:'public',table:'expenses'},scheduleLoad)
       .on('postgres_changes',{event:'*',schema:'public',table:'plan_items'},scheduleLoad)
-      .on('postgres_changes',{event:'*',schema:'public',table:'settings'},scheduleLoad)
       .subscribe(st=>{live=(st==='SUBSCRIBED');setSync()});
     setInterval(()=>{if(!document.hidden)loadAll()},8000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadAll()});
@@ -1184,66 +1174,6 @@ function applyExpenses(rows){
   try{localStorage.setItem('p_expenses',JSON.stringify(expenses))}catch(e){}
   return{diff,added};
 }
-function applySettings(rows){
-  const row=rows.find(r=>r.id==='budget');
-  const before=JSON.stringify({amount:budgetLimit,currency:budgetCur});
-  if(row&&row.amount>0){budgetLimit=+row.amount;budgetCur=row.currency||'CZK'}
-  else if(!row){budgetLimit=null}
-  try{localStorage.setItem('p_budget',JSON.stringify({amount:budgetLimit,currency:budgetCur}))}catch(e){}
-  const diff=before!==JSON.stringify({amount:budgetLimit,currency:budgetCur});
-  if(diff)budgetWarned=0;
-  return{diff};
-}
-function budgetToCZK(amt,cur){
-  const rt=curRates();
-  if(cur==='CZK')return amt;
-  if(cur==='ILS')return amt/rt.ils;
-  if(cur==='EUR')return amt/rt.eur;
-  if(cur==='USD')return amt/rt.usd;
-  return amt;
-}
-function checkBudgetWarn(total){
-  if(!budgetLimit)return;
-  const limitCZK=budgetToCZK(budgetLimit,budgetCur);
-  if(!limitCZK||!isFinite(limitCZK))return;
-  const pct=total/limitCZK;
-  const level=pct>=1?2:pct>=0.8?1:0;
-  if(level>budgetWarned){
-    budgetWarned=level;
-    if(level===2)toast('⚠️ חרגתם מהתקציב שהגדרתם לטיול!');
-    else if(level===1)toast('⚠️ מתקרבים לתקציב הטיול (מעל 80%)');
-  }
-}
-function showBudgetEdit(){
-  budgetCurSel=budgetCur||'CZK';
-  openSheet(`<div class="modal"><div class="handle"></div><h2>🎯 תקציב לטיול</h2><div class="sub">נזהיר אתכם כשמתקרבים או חורגים מהסכום</div>
-    <div class="fld"><label>סכום התקציב הכולל</label><input id="bg-a" inputmode="decimal" dir="ltr" value="${budgetLimit?fmtPlain(budgetLimit):''}" placeholder="0" autocomplete="off"></div>
-    <div class="fld"><label>מטבע</label><div class="catpick">${CUR_LIST.map(c=>`<button data-bg-cur="${c}" class="${c===budgetCurSel?'on':''}" onclick="setBudgetCur('${c}')">${CUR_SYM[c]}</button>`).join('')}</div></div>
-    <button class="btn gold block" onclick="saveBudget()">שמור</button>
-    ${budgetLimit?`<button class="btn danger block" onclick="clearBudget()">🗑️ הסר תקציב</button>`:''}</div>`);
-}
-function setBudgetCur(c){budgetCurSel=c;document.querySelectorAll('[data-bg-cur]').forEach(b=>b.classList.toggle('on',b.getAttribute('data-bg-cur')===c))}
-async function saveBudget(){
-  const amt=num($('bg-a').value);
-  if(!isFinite(amt)||amt<=0){toast('הכניסו סכום תקין');return}
-  if(!sb){toast('אין חיבור לשרת');return}
-  const row=Object.assign({id:'budget',amount:amt,currency:budgetCurSel},stamp());
-  budgetLimit=amt;budgetCur=budgetCurSel;budgetWarned=0;
-  try{localStorage.setItem('p_budget',JSON.stringify({amount:amt,currency:budgetCurSel}))}catch(e){}
-  closeSheet();renderView();
-  try{
-    const r=await tracked(sb.from('settings').upsert(row));
-    if(r.error)throw r.error;
-    toast('תקציב נשמר ✓');
-  }catch(e){console.log('budget-save-err',e);toast('לא נשמר: '+(e.message||'שגיאה'))}
-}
-function clearBudget(){
-  if(!confirm('להסיר את מגבלת התקציב?'))return;
-  budgetLimit=null;budgetWarned=0;
-  try{localStorage.removeItem('p_budget')}catch(e){}
-  closeSheet();renderView();
-  if(sb)tracked(sb.from('settings').delete().eq('id','budget')).catch(e=>console.log('budget-del-err',e));
-}
 const CUR_SYM={CZK:'CZK',ILS:'₪',USD:'$',EUR:'€'};
 const CUR_LIST=['CZK','ILS','USD','EUR'];
 function expSorted(){return expenses.slice().sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))}
@@ -1276,21 +1206,7 @@ function expHTML(){
     if(!t)return'';
     return `<button class="exp-daychip${expCurFilter===c?' on':''}" data-exp-curf="${c}">${CUR_SYM[c]} · <b>${fmt(t,2)}</b></button>`;
   }).join('');
-  checkBudgetWarn(total);
-  const budgetHTML=(()=>{
-    if(!budgetLimit)return `<button class="link-btn budget-set" onclick="showBudgetEdit()">🎯 הגדירו תקציב לטיול ונזהיר כשמתקרבים אליו</button>`;
-    const limitCZK=budgetToCZK(budgetLimit,budgetCur);
-    const pct=limitCZK>0?Math.round(total/limitCZK*100):0;
-    const over=total>limitCZK;
-    const barColor=over?'var(--red)':pct>=80?'var(--orange)':'var(--green)';
-    return `<div class="budget-wrap" onclick="showBudgetEdit()">
-      <div class="budget-row"><span>🎯 תקציב: ${fmt(budgetLimit,0)} ${CUR_SYM[budgetCur]}</span><span style="color:${over?'var(--red)':pct>=80?'var(--orange)':'var(--muted)'}">${pct}%</span></div>
-      <div class="bar"><i style="width:${Math.min(100,pct)}%;background:${barColor}"></i></div>
-      ${over?`<div class="budget-warn" style="color:var(--red)">⚠️ חרגתם מהתקציב ב-${fmt(total-limitCZK,0)} CZK</div>`:pct>=80?`<div class="budget-warn" style="color:var(--orange)">⚠️ מתקרבים לתקציב — נשארו כ-${fmt(limitCZK-total,0)} CZK</div>`:''}
-    </div>`;
-  })();
   let h=`<div class="exp-sum glass"><div class="big">${fmt(total,0)} CZK</div><div class="conv2">≈ ${fmt(total*r.ils,0)} ₪ · ${fmt(total*r.eur,0)} € · ${fmt(total*r.usd,0)} $</div>
-    ${budgetHTML}
     <div class="exp-days">${payerChips}${unknownT>0?`<span class="exp-daychip">❔ לא ידוע · <b>${fmt(unknownT,0)}</b></span>`:''}</div>
     <div class="exp-days">${allChip}${D.map((d,i)=>dayChip(i,d.l)).join('')}${dayChip('none','כללי')}</div>
     <div class="exp-days">${curChips}</div></div>`;

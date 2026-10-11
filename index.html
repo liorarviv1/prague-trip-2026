@@ -1380,8 +1380,10 @@ async function delPlanItem(di,id){
   closeSheet();
   try{
     if(isSeed){
-      // can't truly delete a seeded row — store a tombstone override instead
-      const row=Object.assign({id:id,day_idx:di,deleted:true},stampNew());
+      // can't truly delete a seeded row — store a tombstone override instead.
+      // title/time_start/icon are filled from the seed row too, since plan_items.title has a NOT NULL constraint.
+      const seedAct=D[di].a.find(function(x){return x.id===id});
+      const row=Object.assign({id:id,day_idx:di,deleted:true,title:(seedAct&&seedAct.n)||'(נמחק)',time_start:(seedAct&&seedAct.s)||null,time_end:(seedAct&&seedAct.e)||null,icon:(seedAct&&seedAct.ic)||'📍'},stampNew());
       planPend[id]=row;
       planCustom=planCustom.some(x=>x.id===id)?planCustom.map(x=>x.id===id?row:x):planCustom.concat([row]);
       renderView();

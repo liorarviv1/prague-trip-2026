@@ -715,7 +715,7 @@ function planHTML(){
         // still offer a plain navigate button instead of silently showing nothing
         h+=`<div class="seg" style="--i:${i}"><div class="seg-icon">📍</div>
           <div class="seg-info"><div class="seg-method">מרחק לא ידוע</div><div class="seg-detail">בדקו מרחק/זמן בעצמכם</div></div>
-          <div class="seg-acts"><a class="btn gold sm" href="${gmapsDirTo(prev.la,prev.ln,a,'walk')}" target="_blank" rel="noopener">🧭 נווט</a></div></div>`;
+          <div class="seg-acts"><a class="btn gold sm" href="${gmapsDirTo(prev.la,prev.ln,a,'walk')}" target="_blank" rel="noopener">🧭 נווט</a><button class="btn ghost sm" onclick="event.stopPropagation();fixDistanceBetween(${curDay},'${prev.id}','${a.id}')">🔄 חשב מרחק</button></div></div>`;
       }
     }
     const isDone=!!done[a.id],has=notes[a.id]&&notes[a.id].text;
@@ -1401,6 +1401,63 @@ async function delPlanItem(di,id){
     console.log('plan-del-err',e);planCustom=before;renderView();
     alert('לא נמחק (העתיקו את ההודעה הזו אם זה קורה שוב):\n'+(e&&(e.message||e.code||e.details)?[e.message,e.code,e.details].filter(Boolean).join(' · '):JSON.stringify(e)));
   }finally{delete planPend[id]}
+}
+
+/* ══════════ On-demand geocoding (manual "fix distance" button) ══════════
+   We don't auto-geocode every activity (too heavy / was dropped earlier) — but when the
+   app can't estimate a distance, it offers a one-tap button that looks up coordinates for
+   just that one activity's address via Nominatim (OpenStreetMap), and saves them. */
+async function geocodeAddress(q){
+  const url='https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q);
+  const res=await fetch(url,{headers:{'Accept':'application/json'}});
+  if(!res.ok)throw new Error('geocode-http-'+res.status);
+  const data=await res.json();
+  if(!data||!data.length)throw new Error('לא נמצאה כתובת תואמת');
+  return{lat:+data[0].lat,lng:+data[0].lon};
+}
+async function saveActCoords(di,id,lat,lng){
+  if(!sb){toast('אין חיבור לשרת');return false}
+  const list=acts(di),a=list.find(function(x){return x.id===id});
+  if(!a)return false;
+  const existing=planCustom.find(function(x){return x.id===id});
+  const row=Object.assign({
+    id:id,day_idx:di,
+    time_start:a.s||null,time_end:a.e||null,icon:a.ic||'📍',title:a.n,desc:a.ds||null,cost_text:a.c||null,
+    addr:a.addr||ADDR[id]||null,deleted:false,lat:lat,lng:lng,
+    created_by:existing?existing.created_by:null,created_dev:existing?existing.created_dev:null
+  },stamp());
+  if(!existing&&!D[di].a.some(function(x){return x.id===id}))Object.assign(row,stampNew());
+  planPend[id]=row;
+  planCustom=planCustom.some(function(x){return x.id===id})?planCustom.map(function(x){return x.id===id?row:x}):planCustom.concat([row]);
+  renderView();
+  try{
+    const r=await tracked(sb.from('plan_items').upsert(row));
+    if(r.error)throw r.error;
+    return true;
+  }catch(e){console.log('coords-save-err',e);toast('שגיאה בשמירת המיקום: '+(e.message||'שגיאה'));return false}
+  finally{delete planPend[id]}
+}
+async function fixDistanceBetween(di,prevId,curId,reopenAi){
+  const list=acts(di);
+  const prev=list.find(function(x){return x.id===prevId}),a=list.find(function(x){return x.id===curId});
+  const targets=[];
+  if(prev&&!(fin(prev.la)&&fin(prev.ln)))targets.push(prev);
+  if(a&&!(fin(a.la)&&fin(a.ln)))targets.push(a);
+  if(!targets.length){toast('יש כבר מיקום לשתי הפעילויות');return}
+  toast('🔄 מחפש מיקום...');
+  let anyOk=false;
+  for(const t of targets){
+    const q=t.addr||ADDR[t.id]||t.n;
+    if(!q)continue;
+    try{
+      const g=await geocodeAddress(q);
+      const ok=await saveActCoords(di,t.id,g.lat,g.lng);
+      if(ok)anyOk=true;
+    }catch(e){console.log('geocode-err',t.id,e);toast('לא נמצא מיקום ל"'+(t.n||t.id)+'" — נסו לדייק את הכתובת')}
+  }
+  if(anyOk)toast('📍 המיקום עודכן');
+  renderView({force:true});
+  if(reopenAi!=null&&$('mo').classList.contains('on'))showDetail(di,reopenAi);
 }
 
 function showExpEdit(id){
@@ -2193,7 +2250,8 @@ function showDetail(di,ai){
     }else if(destStr(next)){
       nextHtml=`<span class="note-label">הבא: ${next.ic} ${next.n}</span>
         <div class="row"><span class="ic">📍</span><span>מרחק לא ידוע — בדקו בעצמכם</span></div>
-        <a class="btn gold block" href="${gmapsDirTo(a.la,a.ln,next,'walk')}" target="_blank" rel="noopener">🧭 נווט לנקודה הבאה</a>`;
+        <a class="btn gold block" href="${gmapsDirTo(a.la,a.ln,next,'walk')}" target="_blank" rel="noopener">🧭 נווט לנקודה הבאה</a>
+        <button class="btn ghost block" onclick="fixDistanceBetween(${di},'${a.id}','${next.id}',${ai})">🔄 חשב מרחק אוטומטית</button>`;
     }
   }
   const has=notes[a.id]&&notes[a.id].text;

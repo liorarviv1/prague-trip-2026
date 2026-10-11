@@ -271,6 +271,12 @@ body.sheet-open{overflow:hidden}
 .exp-daychip b{color:var(--gold)}
 .exp-g{font-size:12.5px;font-weight:800;color:var(--muted);margin:16px 4px 8px;display:flex;justify-content:space-between}
 .exp-g span:last-child{color:var(--gold)}
+.budget-wrap{margin-top:12px;cursor:pointer;text-align:right}
+.budget-row{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800}
+.budget-row span:first-child{color:var(--text)}
+.budget-wrap .bar{margin-top:6px;height:7px}
+.budget-warn{font-size:11.5px;margin-top:6px}
+.budget-set{display:block;width:100%;margin-top:12px;text-align:center}
 .exp-row{display:flex;align-items:center;gap:10px;border-radius:18px;padding:11px 14px;margin-bottom:8px}
 .exp-row .amt{font-size:16px;font-weight:800;color:var(--gold);min-width:78px}
 .exp-row .em{flex:1;min-width:0}
@@ -434,6 +440,7 @@ const D=[
 ];
 
 /* ── helpers ── */
+function fin(v){return v!=null&&isFinite(v)} // isFinite(null)===true in JS — always check !=null first, or "no coords" silently becomes (0,0)
 function hav(a1,o1,a2,o2){const R=6371,d1=(a2-a1)*Math.PI/180,d2=(o2-o1)*Math.PI/180,a=Math.sin(d1/2)**2+Math.cos(a1*Math.PI/180)*Math.cos(a2*Math.PI/180)*Math.sin(d2/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
 
 function getTransport(from,to,dist){
@@ -459,11 +466,11 @@ const ADDR={
 "4a":"Ambassador Zlatá Husa Prague","4b":"Vyšehrad metro Prague","4c":"Vyšehrad Gardens Prague","4d":"Basilica of St Peter and Paul Vyšehrad","4e":"Vyšehrad Prague","4f":"Náplavka Prague","4g":"Naše Maso Prague","4h":"Havelské tržiště Prague","4i":"Letná Park Metronome Prague","4j":"Ambassador Zlatá Husa Prague","4k":"Yami Sushi House Masná 3 Prague",
 "5a":"Ambassador Zlatá Husa Prague","5b":"Ambassador Zlatá Husa Prague","5c":"Václav Havel Airport Prague","5d":"Václav Havel Airport Prague","5e":"Václav Havel Airport Prague","5f":"Ben Gurion Airport"
 };
-function destStr(a){ return a.addr || ADDR[a.id] || (isFinite(a.la)&&isFinite(a.ln)?(a.la+','+a.ln):a.n||''); }
+function destStr(a){ return a.addr || ADDR[a.id] || (fin(a.la)&&fin(a.ln)?(a.la+','+a.ln):a.n||''); }
 function gmapsDirTo(fromLa,fromLn,to,mode){
   const m=mode==='walk'?'walking':mode==='metro'?'transit':'driving';
   let url=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destStr(to))}&travelmode=${m}`;
-  if(isFinite(fromLa)&&isFinite(fromLn))url+=`&origin=${fromLa},${fromLn}`;
+  if(fin(fromLa)&&fin(fromLn))url+=`&origin=${fromLa},${fromLn}`;
   return url;
 }
 function gmapsSearchFor(a){
@@ -609,6 +616,8 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 let tab='plan', curDay=0;
 let done={}, notes={}, pending={}, custom=[], pendingAdd={}, pendingDel={}, packing=[], pkPend={}, packViewSel='personal', showOthers=true, seedTried=false, peopleDirty=false;
 let expenses=[], expPend={}, expEditId=null, expCatSel='', expPaySel='🤝 משותף', expDaySel='', expDayFilter='', expCurFilter='', expCurSel='CZK';
+let budgetLimit=null, budgetCur='CZK', budgetWarned=0, budgetCurSel='CZK';
+try{const bl=JSON.parse(localStorage.getItem('p_budget')||'null');if(bl&&bl.amount>0){budgetLimit=bl.amount;budgetCur=bl.currency||'CZK'}}catch(e){}
 let planCustom=[], planPend={}, planEditId=null, planEditDay=0;
 let sb=null, live=false, busy=0, synced=false, firstLoadDone=false, loading=false, again=false;
 let myName='';
@@ -998,9 +1007,9 @@ async function loadAll(){
   if(loading){again=true;return}
   loading=true;
   try{
-    const res=await tracked(Promise.all([sb.from('notes').select('*'),sb.from('checks').select('*'),sb.from('bookings').select('*'),sb.from('packing').select('*'),sb.from('info').select('*'),sb.from('plan_order').select('*'),sb.from('expenses').select('*'),sb.from('plan_items').select('*')]));
-    const rn=res[0],rc=res[1],rb=res[2],rp=res[3],ri=res[4],ro=res[5],rx=res[6],rpi=res[7];
-    let cc=[],nr={changed:[],diff:false},br={diff:false,added:[]},pr={diff:false,added:[]},ir={diff:false},oo={diff:false},xx={diff:false,added:[]},pii={diff:false};
+    const res=await tracked(Promise.all([sb.from('notes').select('*'),sb.from('checks').select('*'),sb.from('bookings').select('*'),sb.from('packing').select('*'),sb.from('info').select('*'),sb.from('plan_order').select('*'),sb.from('expenses').select('*'),sb.from('plan_items').select('*'),sb.from('settings').select('*')]));
+    const rn=res[0],rc=res[1],rb=res[2],rp=res[3],ri=res[4],ro=res[5],rx=res[6],rpi=res[7],rs=res[8];
+    let cc=[],nr={changed:[],diff:false},br={diff:false,added:[]},pr={diff:false,added:[]},ir={diff:false},oo={diff:false},xx={diff:false,added:[]},pii={diff:false},ss={diff:false};
     if(rn.error)console.log('notes-load-err',rn.error);else nr=applyNotes(rn.data);
     if(rc.error)console.log('checks-load-err',rc.error);else cc=applyChecks(rc.data);
     if(rb.error)console.log('bookings-load-err',rb.error);else br=applyBookings(rb.data);
@@ -1025,9 +1034,10 @@ async function loadAll(){
     if(ro.error)console.log('order-load-err',ro.error);else oo=applyOrder(ro.data);
     if(rx.error)console.log('expenses-load-err',rx.error);else xx=applyExpenses(rx.data);
     if(rpi.error)console.log('plan-items-load-err',rpi.error);else pii=applyPlanItems(rpi.data);
+    if(rs.error)console.log('settings-load-err',rs.error);else ss=applySettings(rs.data);
     if(!firstLoadDone){
       const errs=[];
-      [['notes',rn],['checks',rc],['bookings',rb],['packing',rp],['info',ri],['plan_order',ro],['expenses',rx],['plan_items',rpi]].forEach(function(pair){
+      [['notes',rn],['checks',rc],['bookings',rb],['packing',rp],['info',ri],['plan_order',ro],['expenses',rx],['plan_items',rpi],['settings',rs]].forEach(function(pair){
         const name=pair[0],res=pair[1];
         if(res&&res.error)errs.push(name+': '+(res.error.message||res.error.code||JSON.stringify(res.error)));
       });
@@ -1035,7 +1045,7 @@ async function loadAll(){
     }
     const first=!firstLoadDone;
     firstLoadDone=true;synced=true;
-    if(first||cc.length||nr.diff||br.diff||pr.diff||ir.diff||oo.diff||xx.diff||pii.diff||peopleDirty){peopleDirty=false;renderView({changed:first?[]:cc.concat(br.added),notes:first?[]:nr.changed})}
+    if(first||cc.length||nr.diff||br.diff||pr.diff||ir.diff||oo.diff||xx.diff||pii.diff||ss.diff||peopleDirty){peopleDirty=false;renderView({changed:first?[]:cc.concat(br.added),notes:first?[]:nr.changed})}
     if(ir.diff&&$('mo').classList.contains('on')&&$('sos-root'))showSOS();
     if(!first){
       if(cc.length)showLive(describeChange(cc));
@@ -1071,6 +1081,7 @@ function initShared(){
       .on('postgres_changes',{event:'*',schema:'public',table:'plan_order'},scheduleLoad)
       .on('postgres_changes',{event:'*',schema:'public',table:'expenses'},scheduleLoad)
       .on('postgres_changes',{event:'*',schema:'public',table:'plan_items'},scheduleLoad)
+      .on('postgres_changes',{event:'*',schema:'public',table:'settings'},scheduleLoad)
       .subscribe(st=>{live=(st==='SUBSCRIBED');setSync()});
     setInterval(()=>{if(!document.hidden)loadAll()},8000);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadAll()});
@@ -1174,6 +1185,66 @@ function applyExpenses(rows){
   try{localStorage.setItem('p_expenses',JSON.stringify(expenses))}catch(e){}
   return{diff,added};
 }
+function applySettings(rows){
+  const row=rows.find(r=>r.id==='budget');
+  const before=JSON.stringify({amount:budgetLimit,currency:budgetCur});
+  if(row&&row.amount>0){budgetLimit=+row.amount;budgetCur=row.currency||'CZK'}
+  else if(!row){budgetLimit=null}
+  try{localStorage.setItem('p_budget',JSON.stringify({amount:budgetLimit,currency:budgetCur}))}catch(e){}
+  const diff=before!==JSON.stringify({amount:budgetLimit,currency:budgetCur});
+  if(diff)budgetWarned=0;
+  return{diff};
+}
+function budgetToCZK(amt,cur){
+  const rt=curRates();
+  if(cur==='CZK')return amt;
+  if(cur==='ILS')return amt/rt.ils;
+  if(cur==='EUR')return amt/rt.eur;
+  if(cur==='USD')return amt/rt.usd;
+  return amt;
+}
+function checkBudgetWarn(total){
+  if(!budgetLimit)return;
+  const limitCZK=budgetToCZK(budgetLimit,budgetCur);
+  if(!limitCZK||!isFinite(limitCZK))return;
+  const pct=total/limitCZK;
+  const level=pct>=1?2:pct>=0.8?1:0;
+  if(level>budgetWarned){
+    budgetWarned=level;
+    if(level===2)toast('⚠️ חרגתם מהתקציב שהגדרתם לטיול!');
+    else if(level===1)toast('⚠️ מתקרבים לתקציב הטיול (מעל 80%)');
+  }
+}
+function showBudgetEdit(){
+  budgetCurSel=budgetCur||'CZK';
+  openSheet(`<div class="modal"><div class="handle"></div><h2>🎯 תקציב לטיול</h2><div class="sub">נזהיר אתכם כשמתקרבים או חורגים מהסכום</div>
+    <div class="fld"><label>סכום התקציב הכולל</label><input id="bg-a" inputmode="decimal" dir="ltr" value="${budgetLimit?fmtPlain(budgetLimit):''}" placeholder="0" autocomplete="off"></div>
+    <div class="fld"><label>מטבע</label><div class="catpick">${CUR_LIST.map(c=>`<button data-bg-cur="${c}" class="${c===budgetCurSel?'on':''}" onclick="setBudgetCur('${c}')">${CUR_SYM[c]}</button>`).join('')}</div></div>
+    <button class="btn gold block" onclick="saveBudget()">שמור</button>
+    ${budgetLimit?`<button class="btn danger block" onclick="clearBudget()">🗑️ הסר תקציב</button>`:''}</div>`);
+}
+function setBudgetCur(c){budgetCurSel=c;document.querySelectorAll('[data-bg-cur]').forEach(b=>b.classList.toggle('on',b.getAttribute('data-bg-cur')===c))}
+async function saveBudget(){
+  const amt=num($('bg-a').value);
+  if(!isFinite(amt)||amt<=0){toast('הכניסו סכום תקין');return}
+  if(!sb){toast('אין חיבור לשרת');return}
+  const row=Object.assign({id:'budget',amount:amt,currency:budgetCurSel},stamp());
+  budgetLimit=amt;budgetCur=budgetCurSel;budgetWarned=0;
+  try{localStorage.setItem('p_budget',JSON.stringify({amount:amt,currency:budgetCurSel}))}catch(e){}
+  closeSheet();renderView();
+  try{
+    const r=await tracked(sb.from('settings').upsert(row));
+    if(r.error)throw r.error;
+    toast('תקציב נשמר ✓');
+  }catch(e){console.log('budget-save-err',e);toast('לא נשמר: '+(e.message||'שגיאה'))}
+}
+function clearBudget(){
+  if(!confirm('להסיר את מגבלת התקציב?'))return;
+  budgetLimit=null;budgetWarned=0;
+  try{localStorage.removeItem('p_budget')}catch(e){}
+  closeSheet();renderView();
+  if(sb)tracked(sb.from('settings').delete().eq('id','budget')).catch(e=>console.log('budget-del-err',e));
+}
 const CUR_SYM={CZK:'CZK',ILS:'₪',USD:'$',EUR:'€'};
 const CUR_LIST=['CZK','ILS','USD','EUR'];
 function expSorted(){return expenses.slice().sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))}
@@ -1206,7 +1277,21 @@ function expHTML(){
     if(!t)return'';
     return `<button class="exp-daychip${expCurFilter===c?' on':''}" data-exp-curf="${c}">${CUR_SYM[c]} · <b>${fmt(t,2)}</b></button>`;
   }).join('');
+  checkBudgetWarn(total);
+  const budgetHTML=(()=>{
+    if(!budgetLimit)return `<button class="link-btn budget-set" onclick="showBudgetEdit()">🎯 הגדירו תקציב לטיול ונזהיר כשמתקרבים אליו</button>`;
+    const limitCZK=budgetToCZK(budgetLimit,budgetCur);
+    const pct=limitCZK>0?Math.round(total/limitCZK*100):0;
+    const over=total>limitCZK;
+    const barColor=over?'var(--red)':pct>=80?'var(--orange)':'var(--green)';
+    return `<div class="budget-wrap" onclick="showBudgetEdit()">
+      <div class="budget-row"><span>🎯 תקציב: ${fmt(budgetLimit,0)} ${CUR_SYM[budgetCur]}</span><span style="color:${over?'var(--red)':pct>=80?'var(--orange)':'var(--muted)'}">${pct}%</span></div>
+      <div class="bar"><i style="width:${Math.min(100,pct)}%;background:${barColor}"></i></div>
+      ${over?`<div class="budget-warn" style="color:var(--red)">⚠️ חרגתם מהתקציב ב-${fmt(total-limitCZK,0)} CZK</div>`:pct>=80?`<div class="budget-warn" style="color:var(--orange)">⚠️ מתקרבים לתקציב — נשארו כ-${fmt(limitCZK-total,0)} CZK</div>`:`<div class="budget-warn" style="color:var(--muted);font-weight:600">נשארו ${fmt(limitCZK-total,0)} CZK מהתקציב</div>`}
+    </div>`;
+  })();
   let h=`<div class="exp-sum glass"><div class="big">${fmt(total,0)} CZK</div><div class="conv2">≈ ${fmt(total*r.ils,0)} ₪ · ${fmt(total*r.eur,0)} € · ${fmt(total*r.usd,0)} $</div>
+    ${budgetHTML}
     <div class="exp-days">${payerChips}${unknownT>0?`<span class="exp-daychip">❔ לא ידוע · <b>${fmt(unknownT,0)}</b></span>`:''}</div>
     <div class="exp-days">${allChip}${D.map((d,i)=>dayChip(i,d.l)).join('')}${dayChip('none','כללי')}</div>
     <div class="exp-days">${curChips}</div></div>`;
@@ -1280,6 +1365,7 @@ async function savePlanItem(){
     const r=await tracked(sb.from('plan_items').upsert(row));
     if(r.error)throw r.error;
     closeSheet();toast('נשמר ✓');
+    if(s)autoSortDay(planEditDay); // has a start time → slot it into time order automatically
   }catch(e){
     console.log('plan-save-err',e);planCustom=before;renderView();
     toast('לא נשמר: '+(e.message||'שגיאה'));
@@ -1311,7 +1397,7 @@ async function delPlanItem(di,id){
     toast('נמחק');
   }catch(e){
     console.log('plan-del-err',e);planCustom=before;renderView();
-    toast('לא נמחק: '+(e.message||'שגיאה'));
+    alert('לא נמחק (העתיקו את ההודעה הזו אם זה קורה שוב):\n'+(e&&(e.message||e.code||e.details)?[e.message,e.code,e.details].filter(Boolean).join(' · '):JSON.stringify(e)));
   }finally{delete planPend[id]}
 }
 
@@ -1967,14 +2053,14 @@ function acts(di){
       s:o.time_start||a.s,e:o.time_end||a.e,ic:o.icon||a.ic,n:o.title||a.n,
       ds:(o.desc!=null?o.desc:a.ds),c:o.cost_text||a.c,cv:(o.cost_val!=null?o.cost_val:a.cv),
       addr:o.addr||a.addr,
-      la:(isFinite(o.lat)?o.lat:a.la),ln:(isFinite(o.lng)?o.lng:a.ln),
+      la:(fin(o.lat)?o.lat:a.la),ln:(fin(o.lng)?o.lng:a.ln),
       created_by:o.created_by,created_dev:o.created_dev,updated_by:o.updated_by,updated_dev:o.updated_dev,
       _edited:true
     });
   }).filter(Boolean);
   added.forEach(function(r){
     list.push({id:r.id,s:r.time_start||'',e:r.time_end||'',ic:r.icon||'📍',n:r.title,ds:r.desc||'',
-      c:r.cost_text||'—',cv:r.cost_val||0,la:(isFinite(r.lat)?r.lat:NaN),ln:(isFinite(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
+      c:r.cost_text||'—',cv:r.cost_val||0,la:(fin(r.lat)?r.lat:NaN),ln:(fin(r.lng)?r.lng:NaN),addr:r.addr||'',custom:true,
       created_by:r.created_by,created_dev:r.created_dev,updated_by:r.updated_by,updated_dev:r.updated_dev});
   });
   const ord=planOrder['d'+di];
@@ -2021,6 +2107,19 @@ async function resetOrder(){
   try{const r=await tracked(sb.from('plan_order').delete().eq('day_key',key));if(r.error)throw r.error;toast('הסדר אופס')}
   catch(e){console.log('order-reset-err',e);toast('לא אופס: '+(e.message||'שגיאה'))}
   finally{delete orderPend[key]}
+}
+// Auto-sort a day: items WITH a start time are placed in time order; items with no time
+// keep exactly their current slot (so manual drag-order of no-time items is never touched).
+function autoSortDay(di){
+  const list=acts(di);
+  const timedIdx=[];
+  list.forEach(function(a,i){if(toMin(a.s)!=null)timedIdx.push(i)});
+  if(timedIdx.length<2)return;
+  const timedSorted=timedIdx.map(function(i){return list[i]}).slice().sort(function(a,b){return toMin(a.s)-toMin(b.s)});
+  const out=list.slice();
+  timedIdx.forEach(function(pos,k){out[pos]=timedSorted[k]});
+  const curIds=list.map(function(a){return a.id}),newIds=out.map(function(a){return a.id});
+  if(JSON.stringify(curIds)!==JSON.stringify(newIds))savePlanOrder(di,newIds);
 }
 function initSortable(){
   if(sortInst){try{sortInst.destroy()}catch(e){}sortInst=null}

@@ -144,10 +144,17 @@ body{
 .sec-h{font-size:12.5px;font-weight:800;color:var(--muted);margin:16px 4px 8px;display:flex;align-items:center;gap:8px}
 .sec-h::after{content:'';flex:1;height:1px;background:var(--glass-b)}
 .link-btn{display:block;margin:6px auto 0;background:none;border:none;color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;padding:10px}
+.cal-pick-list{padding-bottom:4px}
 .cal-pick-row{display:flex;align-items:center;gap:10px;padding:9px 6px;font-size:13.5px;border-bottom:1px solid var(--glass-b)}
 .cal-pick-row input{width:19px;height:19px;flex-shrink:0;accent-color:var(--gold)}
 .cal-pick-row .cp-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-pick-row .cp-s{color:var(--muted);font-size:11.5px;flex-shrink:0}
+.cal-day-h{display:flex;align-items:center;gap:10px;padding:10px 6px;margin-top:10px;font-size:13px;background:var(--input);border-radius:10px}
+.cal-day-h input{width:19px;height:19px;flex-shrink:0;accent-color:var(--gold)}
+.cal-day-h b{flex:1;color:var(--text)}
+.cal-day-h .cp-s{color:var(--muted);font-size:11px}
+.cal-sticky-foot{position:sticky;bottom:calc(-20px - var(--sab));margin:14px -18px calc(-20px - var(--sab));padding:12px 18px calc(14px + var(--sab));background:var(--glass-strong);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--glass-b);border-radius:0 0 26px 26px}
+.cal-sticky-foot .btn{margin:0}
 .namebar{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);margin-bottom:10px;padding:0 4px}
 
 .ppl{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 12px}
@@ -2417,27 +2424,63 @@ function showCalendarPicker(){
   if(!calPickSel)calPickSel=new Set(all.map(function(x){return x.key}));
   renderCalPicker();
 }
+// Rendered once per open — every checkbox toggle after that patches the DOM directly
+// (instead of rebuilding the whole sheet), so the scroll position never jumps.
 function renderCalPicker(){
   const all=calEligibleActs();
-  let h='<div class="modal"><div class="handle"></div><h2>📅 הוספה ליומן</h2><div class="sub">סמנו מה להוסיף — הכל, או רק חלק</div>';
-  h+='<div class="exp-g"><span>נבחרו '+calPickSel.size+' מתוך '+all.length+'</span><span><button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(true)">סמנו הכל</button> · <button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(false)">נקו הכל</button></span></div>';
+  let h='<div class="modal cal-modal"><div class="handle"></div><h2>📅 הוספה ליומן</h2><div class="sub">סמנו מה להוסיף — הכל, או רק חלק</div>';
+  h+='<div class="exp-g"><span id="calSummaryText">נבחרו '+calPickSel.size+' מתוך '+all.length+'</span><span><button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(true)">סמנו הכל</button> · <button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(false)">נקו הכל</button></span></div>';
+  h+='<div class="cal-pick-list">';
   let lastDi=-1;
   all.forEach(function(x){
-    if(x.di!==lastDi){lastDi=x.di;h+='<div class="exp-g"><span>'+esc(D[x.di].l)+'</span><span></span></div>'}
+    if(x.di!==lastDi){
+      lastDi=x.di;
+      const dayAll=all.filter(function(y){return y.di===x.di});
+      const dayOn=dayAll.every(function(y){return calPickSel.has(y.key)});
+      h+='<label class="cal-day-h"><input type="checkbox" data-cal-day="'+x.di+'" '+(dayOn?'checked':'')+' onchange="toggleCalDay('+x.di+')"><b>'+esc(D[x.di].l)+'</b><span class="cp-s">כל היום</span></label>';
+    }
     const on=calPickSel.has(x.key);
-    h+='<label class="cal-pick-row"><input type="checkbox" '+(on?'checked':'')+' onchange="toggleCalPick(\''+x.key+'\')"><span class="cp-t">'+x.a.ic+' '+esc(x.a.n)+'</span><span class="cp-s">'+esc(x.a.s)+'</span></label>';
+    h+='<label class="cal-pick-row"><input type="checkbox" data-cal-key="'+x.key+'" '+(on?'checked':'')+' onchange="toggleCalPick(\''+x.key+'\','+x.di+')"><span class="cp-t">'+x.a.ic+' '+esc(x.a.n)+'</span><span class="cp-s">'+esc(x.a.s)+'</span></label>';
   });
-  h+='<button class="btn gold block" onclick="addSelectedToCalendar()">📥 הוסף '+calPickSel.size+' ליומן</button></div>';
+  h+='</div><div class="cal-sticky-foot"><button class="btn gold block" id="calAddBtn" onclick="addSelectedToCalendar()">📥 הוסף '+calPickSel.size+' ליומן</button></div></div>';
   openSheet(h);
 }
-function toggleCalPick(key){
+function calUpdateSummaryUI(){
+  const all=calEligibleActs();
+  const sum=$('calSummaryText');if(sum)sum.textContent='נבחרו '+calPickSel.size+' מתוך '+all.length;
+  const btn=$('calAddBtn');if(btn)btn.textContent='📥 הוסף '+calPickSel.size+' ליומן';
+}
+function calUpdateDayCheckbox(di){
+  const dayAll=calEligibleActs().filter(function(x){return x.di===di});
+  const dayChk=document.querySelector('[data-cal-day="'+di+'"]');
+  if(!dayChk||!dayAll.length)return;
+  const selCount=dayAll.filter(function(x){return calPickSel.has(x.key)}).length;
+  dayChk.checked=selCount===dayAll.length;
+  dayChk.indeterminate=selCount>0&&selCount<dayAll.length;
+}
+function toggleCalPick(key,di){
   if(calPickSel.has(key))calPickSel.delete(key);else calPickSel.add(key);
-  renderCalPicker();
+  calUpdateDayCheckbox(di);
+  calUpdateSummaryUI();
+}
+function toggleCalDay(di){
+  const dayAll=calEligibleActs().filter(function(x){return x.di===di});
+  const allOn=dayAll.every(function(x){return calPickSel.has(x.key)});
+  dayAll.forEach(function(x){
+    if(allOn)calPickSel.delete(x.key);else calPickSel.add(x.key);
+    const cb=document.querySelector('[data-cal-key="'+x.key+'"]');
+    if(cb)cb.checked=!allOn;
+  });
+  calUpdateDayCheckbox(di);
+  calUpdateSummaryUI();
 }
 function calPickAll(v){
   const all=calEligibleActs();
   calPickSel=v?new Set(all.map(function(x){return x.key})):new Set();
-  renderCalPicker();
+  document.querySelectorAll('[data-cal-key]').forEach(function(cb){cb.checked=v});
+  const days=[];all.forEach(function(x){if(days.indexOf(x.di)<0)days.push(x.di)});
+  days.forEach(calUpdateDayCheckbox);
+  calUpdateSummaryUI();
 }
 function addSelectedToCalendar(){
   try{

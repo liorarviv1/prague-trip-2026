@@ -147,7 +147,7 @@ body{
 .cal-pick-list{padding-bottom:4px}
 .cal-pick-row{display:flex;align-items:center;gap:10px;padding:9px 6px;font-size:13.5px;border-bottom:1px solid var(--glass-b)}
 .cal-pick-row input{width:19px;height:19px;flex-shrink:0;accent-color:var(--gold)}
-.cal-pick-row .cp-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-pick-row .cp-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .cal-pick-row .cp-s{color:var(--muted);font-size:11.5px;flex-shrink:0}
 .cal-day-h{display:flex;align-items:center;gap:10px;padding:10px 6px;margin-top:10px;font-size:13px;background:var(--input);border-radius:10px}
 .cal-day-h input{width:19px;height:19px;flex-shrink:0;accent-color:var(--gold)}
@@ -2440,7 +2440,7 @@ function renderCalPicker(){
       h+='<label class="cal-day-h"><input type="checkbox" data-cal-day="'+x.di+'" '+(dayOn?'checked':'')+' onchange="toggleCalDay('+x.di+')"><b>'+esc(D[x.di].l)+'</b><span class="cp-s">כל היום</span></label>';
     }
     const on=calPickSel.has(x.key);
-    h+='<label class="cal-pick-row"><input type="checkbox" data-cal-key="'+x.key+'" '+(on?'checked':'')+' onchange="toggleCalPick(\''+x.key+'\','+x.di+')"><span class="cp-t">'+x.a.ic+' '+esc(x.a.n)+'</span><span class="cp-s">'+esc(x.a.s)+'</span></label>';
+    h+='<label class="cal-pick-row"><input type="checkbox" data-cal-key="'+x.key+'" '+(on?'checked':'')+' onchange="toggleCalPick(\''+x.key+'\','+x.di+')"><span class="cp-t" onclick="event.preventDefault();event.stopPropagation();calNameTap(\''+x.key+'\','+x.di+',\''+x.a.id+'\')">'+x.a.ic+' '+esc(x.a.n)+'</span><span class="cp-s">'+esc(x.a.s)+'</span></label>';
   });
   h+='</div><div class="cal-sticky-foot"><button class="btn gold block" id="calAddBtn" onclick="addSelectedToCalendar()">📥 הוסף '+calPickSel.size+' ליומן</button></div></div>';
   openSheet(h);
@@ -2481,6 +2481,17 @@ function calPickAll(v){
   const days=[];all.forEach(function(x){if(days.indexOf(x.di)<0)days.push(x.di)});
   days.forEach(calUpdateDayCheckbox);
   calUpdateSummaryUI();
+}
+// Double-tap the activity's name (not the checkbox) → jump to it in the schedule, same as a search result.
+let calTapKey=null,calTapTimer=null;
+function calNameTap(key,di,id){
+  if(calTapKey===key&&calTapTimer){
+    clearTimeout(calTapTimer);calTapTimer=null;calTapKey=null;
+    goSearchPlan(di,id); // closes this sheet, switches to the right day/tab and flashes the card
+  }else{
+    calTapKey=key;
+    calTapTimer=setTimeout(function(){calTapTimer=null;calTapKey=null},450);
+  }
 }
 function addSelectedToCalendar(){
   try{

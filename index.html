@@ -144,6 +144,10 @@ body{
 .sec-h{font-size:12.5px;font-weight:800;color:var(--muted);margin:16px 4px 8px;display:flex;align-items:center;gap:8px}
 .sec-h::after{content:'';flex:1;height:1px;background:var(--glass-b)}
 .link-btn{display:block;margin:6px auto 0;background:none;border:none;color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;padding:10px}
+.cal-pick-row{display:flex;align-items:center;gap:10px;padding:9px 6px;font-size:13.5px;border-bottom:1px solid var(--glass-b)}
+.cal-pick-row input{width:19px;height:19px;flex-shrink:0;accent-color:var(--gold)}
+.cal-pick-row .cp-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-pick-row .cp-s{color:var(--muted);font-size:11.5px;flex-shrink:0}
 .namebar{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);margin-bottom:10px;padding:0 4px}
 
 .ppl{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 12px}
@@ -348,7 +352,7 @@ body.sheet-open{overflow:hidden}
       <button class="hbtn sos" data-open="sos" aria-label="מידע חיוני" data-ic="buoy"></button>
       <a class="hbtn" href="https://translate.google.com/?hl=iw&sl=iw&tl=cs&op=translate" target="_blank" rel="noopener" aria-label="גוגל תרגום" data-ic="translate"></a>
       <button class="hbtn" onclick="openNearby()" aria-label="מסעדות בקרבת מקום" data-ic="fork"></button>
-      <button class="hbtn" onclick="addAllToCalendar()" aria-label="הוסף את כל הלו&quot;ז ליומן" data-ic="cal"></button>
+      <button class="hbtn" onclick="showCalendarPicker()" aria-label="הוסף פעילויות ליומן" data-ic="cal"></button>
     </div>
     <div class="sync" id="sync"><span class="dot"></span><span id="syncTxt">מתחבר</span></div>
   </div>
@@ -570,8 +574,9 @@ function initDayMap(){
         if(tapTimer){ // second tap within the window -> navigate to it in the app
           clearTimeout(tapTimer);tapTimer=null;
           goToCard(a);
-        }else{ // first tap -> just show what this place is
+        }else{ // first tap -> just show what this place is (toast is the reliable one — the map popup can get clipped near the edges of the map box)
           showMkPopup(a,pos);
+          toast(a.ic+' '+a.n+' · '+a.s+'–'+a.e);
           tapTimer=setTimeout(function(){tapTimer=null},450);
         }
       });
@@ -2394,23 +2399,66 @@ function downloadBlob(text,filename){
   document.body.appendChild(link);link.click();document.body.removeChild(link);
   setTimeout(function(){URL.revokeObjectURL(url)},30000);
 }
-function addAllToCalendar(){
+/* ══════════ Pick-which-activities-to-add-to-calendar sheet ══════════ */
+let calPickSel=null; // Set of "dayIdx:actId" keys
+function calKey(di,a){return di+':'+a.id}
+function calEligibleActs(){
+  const out=[];
+  for(let di=0;di<D.length;di++){
+    acts(di).forEach(function(a){
+      if(toMin(a.s)!=null)out.push({di:di,a:a,key:calKey(di,a)});
+    });
+  }
+  return out;
+}
+function showCalendarPicker(){
+  const all=calEligibleActs();
+  if(!all.length){toast('לא נמצאו פעילויות עם שעה תקינה להוספה');return}
+  if(!calPickSel)calPickSel=new Set(all.map(function(x){return x.key}));
+  renderCalPicker();
+}
+function renderCalPicker(){
+  const all=calEligibleActs();
+  let h='<div class="modal"><div class="handle"></div><h2>📅 הוספה ליומן</h2><div class="sub">סמנו מה להוסיף — הכל, או רק חלק</div>';
+  h+='<div class="exp-g"><span>נבחרו '+calPickSel.size+' מתוך '+all.length+'</span><span><button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(true)">סמנו הכל</button> · <button class="link-btn" style="margin:0;padding:2px 8px;display:inline" onclick="calPickAll(false)">נקו הכל</button></span></div>';
+  let lastDi=-1;
+  all.forEach(function(x){
+    if(x.di!==lastDi){lastDi=x.di;h+='<div class="exp-g"><span>'+esc(D[x.di].l)+'</span><span></span></div>'}
+    const on=calPickSel.has(x.key);
+    h+='<label class="cal-pick-row"><input type="checkbox" '+(on?'checked':'')+' onchange="toggleCalPick(\''+x.key+'\')"><span class="cp-t">'+x.a.ic+' '+esc(x.a.n)+'</span><span class="cp-s">'+esc(x.a.s)+'</span></label>';
+  });
+  h+='<button class="btn gold block" onclick="addSelectedToCalendar()">📥 הוסף '+calPickSel.size+' ליומן</button></div>';
+  openSheet(h);
+}
+function toggleCalPick(key){
+  if(calPickSel.has(key))calPickSel.delete(key);else calPickSel.add(key);
+  renderCalPicker();
+}
+function calPickAll(v){
+  const all=calEligibleActs();
+  calPickSel=v?new Set(all.map(function(x){return x.key})):new Set();
+  renderCalPicker();
+}
+function addSelectedToCalendar(){
   try{
+    if(!calPickSel||!calPickSel.size){toast('לא נבחרו פעילויות');return}
     const events=[];
     for(let di=0;di<D.length;di++){
       acts(di).forEach(function(a){
+        if(!calPickSel.has(calKey(di,a)))return;
         const dt=activityDates(di,a);
         if(!dt)return;
         const loc=a.addr||ADDR[a.id]||a.n||'';
         events.push(buildIcsEvent(a,dt.start,dt.end,loc,icsUidFor(di,a)));
       });
     }
-    if(!events.length){alert('לא נמצאו פעילויות עם שעה תקינה להוספה');return}
+    if(!events.length){alert('לא נמצאו פעילויות תקינות להוספה');return}
     const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Prague Trip//HE','CALSCALE:GREGORIAN','METHOD:PUBLISH']
       .concat(events).concat(['END:VCALENDAR']).join('\r\n');
-    downloadBlob(ics,'prague_trip.ics');
-    toast('📥 כל הלו"ז ירד כקובץ אחד — פתחו אותו ולחצו "הוסף הכל"');
-  }catch(e){alert('שגיאה בהוספת כל הלו"ז: '+(e&&e.message?e.message:e));console.log('addAll-err',e)}
+    downloadBlob(ics,'prague_trip_selected.ics');
+    closeSheet();
+    toast('📥 '+events.length+' פעילויות ירדו כקובץ אחד — פתחו אותו ולחצו "הוסף הכל"');
+  }catch(e){alert('שגיאה בהוספה ליומן: '+(e&&e.message?e.message:e));console.log('addSel-err',e)}
 }
 
 /* ══════════ Init ══════════ */
